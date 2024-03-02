@@ -2,3 +2,8 @@ __pycache__
 output
 .env
 .vscode
+data
+.idea
+**/output
+**/data
+
