@@ -6,11 +6,11 @@ This repository contains utilities for running experiments (the `repeng` package
 
 ## Installation
 ```bash
-git clone https://github.com/mishajw/repeng
-cd repeng
+git clone git@github.com:Manuscrit/meta_evals.git
+cd meta_evals
 pip install -e .
-# Or if using poetry:
-poetry install
+# Or if using poetry [DEPRECATED]
+poetry install 
 ```
 
 ## Reproducing experiments
@@ -19,10 +19,9 @@ poetry install
 [Report](https://docs.google.com/document/d/1tz-JulAUz3SOc8Qm8MLwE9TohX8gSZlXQ2Y4PBwfJ1U).
 
 1. Install the repository, as described [above](#installation).
-2. Optional: Check out `c99e9aa`. This shouldn't be necessary, unless I introduce breaking changes.
-3. Create a dataset of activations: `python experiments/comparison_dataset.py`.
+2. Create a dataset of activations: `python experiments/gather_activation_dataset.py`.
     - This will upload the experiments to S3. Some tinkering may be required to change the upload location - sorry about that!
-4. Run the analysis: `python experiments/comparison.py`.
-    - This will write plots to `./output/comparison`.
+3. Run the analysis: `python experiments/plot_comparisons.py`.
+    - This will write plots to `./data/plots/comparison`.
 
 This is split into two scripts as only the first requires a GPU for LLM inference.

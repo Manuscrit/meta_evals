@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "repeng"
+name = "meta_evals"
 version = "0.1.0"
 description = ""
-authors = ["Misha Wagner <mishajw@gmail.com>"]
+authors = ["Misha Wagner <mishajw@gmail.com>", "Maxime Riche <maxime.riche.insa@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

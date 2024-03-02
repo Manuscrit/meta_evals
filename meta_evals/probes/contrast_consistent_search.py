@@ -25,6 +25,7 @@ from typing_extensions import override
 
 from meta_evals.probes.base import BaseProbe, PredictResult
 from meta_evals.probes.normalization import normalize_by_group
+from meta_evals.utils.constants import DEBUG
 
 
 class CcsProbe(torch.nn.Module, BaseProbe):
@@ -118,7 +119,7 @@ def train_ccs_probe(
 
     optimizer.step(closure=get_loss)
     loss = get_loss()
-    if loss > 0.2:
+    if loss > 0.2 and not DEBUG:
         if attempts > 0:
             return train_ccs_probe(
                 config=config,

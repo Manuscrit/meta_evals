@@ -36,20 +36,27 @@ from meta_evals.utils.compare_strucs import (
     EvalResult,
     PipelineResultRow,
 )
+from meta_evals.utils.constants import (
+    ACTIVATION_DIR,
+    DEBUG,
+    MODEL_FOR_DEBUGGING,
+    PLOT_DIR,
+)
 
 
-def compute_and_plot_all_comparisons():
+def compute_and_plot_all_comparisons(activation_ds_paths):
     assert load_dotenv("../.env")
+    token_idxs: list[int] = [-1]
+
+    if len(LLM_IDS) != 1:
+        raise ValueError("Only one LLM_ID is supported")
+    points = get_points(LLM_IDS[0])[1::4]
 
     (
         dataset,
         mcontext,
         output_path,
-    ) = load_activation_dataset()
-
-    token_idxs: list[int] = [-1]
-    points = get_points("Llama-2-13b-chat-hf")[1::4]
-
+    ) = load_activation_dataset(activation_ds_paths)
     df = compute_recovered_acc(
         dataset,
         mcontext,
@@ -67,21 +74,20 @@ def compute_and_plot_all_comparisons():
     sanity_check_results(points, token_idxs, output_path, dataset, mcontext)
 
 
-def load_activation_dataset():
-    output_path = Path("../output/comparison")
+def load_activation_dataset(activation_ds_paths: list[str] = None):
+    output_path = Path(PLOT_DIR / "comparison")
     mcontext = MContext(output_path)
-    # %%
-    activation_results_p1: list[ActivationResultRow] = mcontext.download_cached(
-        "activations_results",
-        path="s3://repeng/datasets/activations/datasets_2024-02-14_v1.pickle",
-        to="pickle",
-    ).get()
-    activation_results_p2: list[ActivationResultRow] = mcontext.download_cached(
-        "activations_results_p2",
-        path="s3://repeng/datasets/activations/datasets_2024-02-23_truthfulqa_v1.pickle",
-        to="pickle",
-    ).get()
-    activation_results = activation_results_p1 + activation_results_p2
+    activation_results = None
+    for ds_idx, path in enumerate(activation_ds_paths):
+        activation_result = mcontext.download_cached(
+            f"activations_results_idx_{ds_idx}",
+            path=path,
+            to="pickle",
+        ).get()
+        if activation_results is None:
+            activation_results = activation_result
+        else:
+            activation_results += activation_result
     print(set(row.llm_id for row in activation_results))
     print(set(row.dataset_id for row in activation_results))
     print(set(row.split for row in activation_results))
@@ -156,23 +162,25 @@ def run_pipeline(
         )
         .map_cached(
             "probe_evaluate-v2",
-            lambda _, spec: _evaluate_probe(spec, eval_splits),
+            lambda _, spec: _evaluate_probe(dataset, spec, eval_splits),
             to=PipelineResultRow,
         )
         .get()
     )
 
 
-def _evaluate_probe(spec: EvalSpec, splits: list[Split]) -> PipelineResultRow:
+def _evaluate_probe(
+    dataset: ActivationArrayDataset, spec: EvalSpec, splits: list[Split]
+) -> PipelineResultRow:
     result_hparams = None
     result_validation = None
     if "train-hparams" in splits:
         result_hparams = _evaluate_probe_on_split(
-            spec.probe, spec.train_spec, spec.dataset, "train-hparams"
+            dataset, spec.probe, spec.train_spec, spec.dataset, "train-hparams"
         )
     elif "validation" in splits:
         result_validation = _evaluate_probe_on_split(
-            spec.probe, spec.train_spec, spec.dataset, "validation"
+            dataset, spec.probe, spec.train_spec, spec.dataset, "validation"
         )
     assert "train" not in splits, splits
     return PipelineResultRow(
@@ -278,7 +286,7 @@ def compute_recovered_acc(
 ):
     datasets = [
         DatasetIdFilter(dataset)
-        for collection in ["dlk", "repe", "got"]
+        for collection in COLLECTIONS
         for dataset in resolve_dataset_ids(
             cast(DatasetCollectionId, collection)
         )
@@ -288,7 +296,7 @@ def compute_recovered_acc(
         mcontext=mcontext,
         points=points,
         token_idxs=token_idxs,
-        llm_ids=["Llama-2-13b-chat-hf"],
+        llm_ids=LLM_IDS,
         train_datasets=datasets,
         eval_datasets=datasets,
         probe_methods=ALL_PROBES,
@@ -430,7 +438,7 @@ def plot_cumulative_distribution_function(
     fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
     fig.write_image(output_path / "r0_acc_by_layer.png", scale=3)
     # fig.show()
-    fig.close()
+    plt.close()
 
 
 def compute_percent_above_80(df: pd.DataFrame):
@@ -450,7 +458,7 @@ def compute_percent_above_80(df: pd.DataFrame):
 def examine_best_probe(df, train_order, algorithm_order, output_path):
     best_train = "dbpedia_14"
     best_algorithm = "DIM"
-    best_layer = 21
+    best_layer = 4 if DEBUG else 21
     examine_probe(
         df,
         train=best_train,
@@ -489,7 +497,7 @@ def examine_probe(
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(output_path / "r1a_by_algorithms.png", scale=3)
-    fig.close()
+    plt.close()
 
     df_best_train = (
         df.copy()
@@ -515,7 +523,7 @@ def examine_probe(
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(output_path / "r1b_by_train.png", scale=3)
-    fig.close()
+    plt.close()
 
     df_best_layer = (
         df.copy()
@@ -541,7 +549,7 @@ def examine_probe(
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(output_path / "r1c_by_layer.png", scale=3)
-    fig.close()
+    plt.close()
 
 
 def plot_algo_perf(df, output_path, algorithm_order):
@@ -562,7 +570,7 @@ def plot_algo_perf(df, output_path, algorithm_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(output_path / "r2_probes.png", scale=3)
-    fig.close()
+    plt.close()
 
     # %%
 
@@ -584,7 +592,7 @@ def plot_dataset_perf(df, output_path, train_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(output_path / "r3a_datasets.png", scale=3)
-    fig.close()
+    plt.close()
 
     # %%
     """
@@ -711,7 +719,7 @@ def plot_truthful_qa_analysis(
         mcontext=mcontext,
         points=points,
         token_idxs=token_idxs,
-        llm_ids=["Llama-2-13b-chat-hf"],
+        llm_ids=LLM_IDS,
         train_datasets=datasets,
         eval_datasets=[DatasetIdFilter("truthful_qa")],
         probe_methods=ALL_PROBES,
@@ -764,7 +772,7 @@ def sanity_check_results(points, token_idxs, output_path, dataset, mcontext):
         mcontext=mcontext,
         points=points,
         token_idxs=token_idxs,
-        llm_ids=["Llama-2-13b-chat-hf"],
+        llm_ids=LLM_IDS,
         train_datasets=[DatasetIdFilter("arc_easy")],
         eval_datasets=[DatasetIdFilter("arc_easy")],
         probe_methods=[
@@ -802,7 +810,7 @@ def sanity_check_results(points, token_idxs, output_path, dataset, mcontext):
         mcontext=mcontext,
         points=points,
         token_idxs=token_idxs,
-        llm_ids=["Llama-2-13b-chat-hf"],
+        llm_ids=LLM_IDS,
         train_datasets=[
             DatasetIdFilter("got_cities"),
             DatasetIdFilter("got_larger_than"),
@@ -852,7 +860,7 @@ def sanity_check_results(points, token_idxs, output_path, dataset, mcontext):
         mcontext=mcontext,
         points=points,
         token_idxs=token_idxs,
-        llm_ids=["Llama-2-13b-chat-hf"],
+        llm_ids=LLM_IDS,
         train_datasets=list(map(DatasetIdFilter, train_datasets)),
         eval_datasets=list(map(DatasetIdFilter, eval_datasets)),
         probe_methods=["lat"],
@@ -918,10 +926,18 @@ DLK_DATASETS = resolve_dataset_ids("dlk")
 REPE_DATASETS = resolve_dataset_ids("repe")
 GOT_DATASETS = resolve_dataset_ids("got")
 COLORS = list(reversed(px.colors.sequential.YlOrRd))
-
+LLM_IDS = [MODEL_FOR_DEBUGGING] if DEBUG else ["Llama-2-13b-chat-hf"]
+COLLECTIONS = ["got"] if DEBUG else ["dlk", "repe", "got"]
 
 if __name__ == "__main__":
+    if DEBUG:
+        activation_ds_paths = [f"{ACTIVATION_DIR}/debug.pickle.pickle"]
+    else:
+        activation_ds_paths = [
+            # "s3://repeng/datasets/activations/datasets_2024-02-14_v1.pickle",
+            # "s3://repeng/datasets/activations/datasets_2024-02-23_truthfulqa_v1.pickle",
+        ]
 
     compute_and_plot_all_comparisons(
-        path,
+        activation_ds_paths,
     )
