@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Sequence, cast
 
@@ -12,7 +13,6 @@ from mppr import MContext
 from tqdm import tqdm
 
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
-from meta_evals.datasets.activations.types import ActivationResultRow
 from meta_evals.datasets.elk.types import DatasetId, Split
 from meta_evals.datasets.elk.utils.collections import (
     DatasetCollectionId,
@@ -39,8 +39,10 @@ from meta_evals.utils.compare_strucs import (
 from meta_evals.utils.constants import (
     ACTIVATION_DIR,
     DEBUG,
-    MODEL_FOR_DEBUGGING,
     PLOT_DIR,
+    get_layer_filter,
+    get_model_ids,
+    get_collection_ids,
 )
 
 
@@ -57,21 +59,29 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
         mcontext,
         output_path,
     ) = load_activation_dataset(activation_ds_paths)
-    df = compute_recovered_acc(
+    df, datasets = compute_metrics(
         dataset,
         mcontext,
         points,
         token_idxs,
     )
     df = get_ranking_by_generalization_performance(df)
-    train_order, algorithm_order = train_and_algo_order(df)
+    ds_order, algorithm_order = get_ds_and_algo_order(df)
     plot_cumulative_distribution_function(df, output_path)
     compute_percent_above_80(df)
-    examine_best_probe(df, train_order, algorithm_order, output_path)
+    examine_best_probe(df, ds_order, algorithm_order, output_path)
     plot_algo_perf(df, output_path, algorithm_order)
-    plot_dataset_perf(df, output_path, train_order)
-    plot_truthful_qa_analysis()
-    sanity_check_results(points, token_idxs, output_path, dataset, mcontext)
+    plot_dataset_perf(df, output_path, ds_order)
+    plot_truthful_qa_analysis(
+        dataset,
+        mcontext,
+        output_path,
+        points,
+        token_idxs,
+        datasets,
+        df,
+    )
+    sanity_check_results(points, token_idxs, output_path, dataset, mcontext, df)
 
 
 def load_activation_dataset(activation_ds_paths: list[str] = None):
@@ -80,7 +90,7 @@ def load_activation_dataset(activation_ds_paths: list[str] = None):
     activation_results = None
     for ds_idx, path in enumerate(activation_ds_paths):
         activation_result = mcontext.download_cached(
-            f"activations_results_idx_{ds_idx}",
+            f"{STAGE_VERSION}_activations_results_idx_{ds_idx}",
             path=path,
             to="pickle",
         ).get()
@@ -131,7 +141,7 @@ def run_pipeline(
         }
     )
     probes = train_specs.map_cached(
-        "probe_train-v2",
+        f"{STAGE_VERSION}_probe_train",
         lambda _, spec: train_probe(
             spec.probe_method,
             dataset.get(
@@ -161,7 +171,7 @@ def run_pipeline(
             }
         )
         .map_cached(
-            "probe_evaluate-v2",
+            f"{STAGE_VERSION}_probe_evaluate",
             lambda _, spec: _evaluate_probe(dataset, spec, eval_splits),
             to=PipelineResultRow,
         )
@@ -178,7 +188,7 @@ def _evaluate_probe(
         result_hparams = _evaluate_probe_on_split(
             dataset, spec.probe, spec.train_spec, spec.dataset, "train-hparams"
         )
-    elif "validation" in splits:
+    if "validation" in splits:
         result_validation = _evaluate_probe_on_split(
             dataset, spec.probe, spec.train_spec, spec.dataset, "validation"
         )
@@ -212,7 +222,6 @@ def _evaluate_probe_on_split(
         token_idx=train_spec.token_idx,
         limit=None,
     )
-    question_result = None
     if arrays.groups is not None:
         question_result = eval_probe_by_question(
             probe,
@@ -278,7 +287,7 @@ def select_best(
     )
 
 
-def compute_recovered_acc(
+def compute_metrics(
     dataset: ActivationArrayDataset,
     mcontext: MContext,
     points: list[str],
@@ -325,11 +334,10 @@ def compute_recovered_acc(
     df["recovered_accuracy_hparams"] = (
         df["accuracy_hparams"].to_numpy() / df["threshold"].to_numpy()
     ).clip(0, 1)
-    # thresholds  # type: ignore
-    return df
+    return df, datasets
 
 
-def train_and_algo_order(df: pd.DataFrame) -> tuple[list[str], list[str]]:
+def get_ds_and_algo_order(df: pd.DataFrame) -> tuple[list[str], list[str]]:
     """
     Fix the order of train datasets & algorithms in plots.
     """
@@ -436,14 +444,15 @@ def plot_cumulative_distribution_function(
         color_discrete_sequence=px.colors.sequential.deep,
     )
     fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
-    fig.write_image(output_path / "r0_acc_by_layer.png", scale=3)
-    # fig.show()
+    fig.write_image(
+        output_path / f"{STAGE_VERSION}_r0_acc_by_layer.png", scale=3
+    )
     plt.close()
 
 
 def compute_percent_above_80(df: pd.DataFrame):
     perc_above_80 = np.mean(
-        df.query("layer >= 13")
+        df.query(get_layer_filter())
         .groupby(["algorithm", "train", "layer", "supervised"])[
             "recovered_accuracy"
         ]
@@ -458,7 +467,7 @@ def compute_percent_above_80(df: pd.DataFrame):
 def examine_best_probe(df, train_order, algorithm_order, output_path):
     best_train = "dbpedia_14"
     best_algorithm = "DIM"
-    best_layer = 4 if DEBUG else 21
+    best_layer = 5 if DEBUG else 21
     examine_probe(
         df,
         train=best_train,
@@ -482,6 +491,9 @@ def examine_probe(
         .mean()
         .reset_index()
     )
+    if len(df_best_probes) == 0:
+        logging.warning(f"No probes for {train} at layer {layer}")
+        return
     fig = px.imshow(
         df_best_probes.pivot(
             index="algorithm", columns="eval", values="recovered_accuracy"
@@ -496,7 +508,9 @@ def examine_probe(
         height=500,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / "r1a_by_algorithms.png", scale=3)
+    fig.write_image(
+        output_path / f"{STAGE_VERSION}_r1a_by_algorithms.png", scale=3
+    )
     plt.close()
 
     df_best_train = (
@@ -522,7 +536,7 @@ def examine_probe(
         height=800,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / "r1b_by_train.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}_r1b_by_train.png", scale=3)
     plt.close()
 
     df_best_layer = (
@@ -548,7 +562,7 @@ def examine_probe(
         height=600,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / "r1c_by_layer.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}_r1c_by_layer.png", scale=3)
     plt.close()
 
 
@@ -569,13 +583,13 @@ def plot_algo_perf(df, output_path, algorithm_order):
         text_auto=".0%",  # type: ignore
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / "r2_probes.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}_r2_probes.png", scale=3)
     plt.close()
 
     # %%
 
 
-def plot_dataset_perf(df, output_path, train_order):
+def plot_dataset_perf(df, output_path, ds_order):
     """
     2. Examining dataset performance
     """
@@ -585,13 +599,13 @@ def plot_dataset_perf(df, output_path, train_order):
         x="train",
         y="recovered_accuracy",
         color="train_group",
-        category_orders={"train": train_order},
+        category_orders={"train": ds_order},
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / "r3a_datasets.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}_rr3a_datasets.png", scale=3)
     plt.close()
 
     # %%
@@ -600,7 +614,7 @@ def plot_dataset_perf(df, output_path, train_order):
     """
     df_train = df.copy()
     df_train = (
-        df_train.query("layer >= 13")
+        df_train.query(get_layer_filter())
         .groupby(["train", "eval"])["recovered_accuracy"]  # type: ignore
         .mean()
         .reset_index()
@@ -609,16 +623,16 @@ def plot_dataset_perf(df, output_path, train_order):
         df_train.pivot(
             index="train", columns="eval", values="recovered_accuracy"
         )
-        .reindex(train_order, axis=0)
-        .reindex(train_order, axis=1),
+        .reindex(ds_order, axis=0)
+        .reindex(ds_order, axis=1),
         text_auto=".0%",  # type: ignore
         color_continuous_scale=COLORS,
         width=800,
         height=800,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / "r3b_matrix.png", scale=3)
-    fig.show()
+    fig.write_image(output_path / f"{STAGE_VERSION}_r3b_matrix.png", scale=3)
+    plt.close()
 
     # %%
     """
@@ -659,8 +673,10 @@ def plot_dataset_perf(df, output_path, train_order):
         width=800,
     )
     fig.update_traces(textposition="bottom center")
-    fig.write_image(output_path / "r3c_to_and_from.png", scale=3)
-    fig.show()
+    fig.write_image(
+        output_path / f"{STAGE_VERSION}_r3c_to_and_from.png", scale=3
+    )
+    plt.close()
 
     # %%
     """
@@ -669,14 +685,14 @@ def plot_dataset_perf(df, output_path, train_order):
     df_train = df.copy()
     df_train = (
         (
-            df_train.query("layer >= 13")
+            df_train.query(get_layer_filter())
             .groupby(["train", "eval"])["recovered_accuracy"]  # type: ignore
             .mean()
             .reset_index()
         )
         .pivot(index="train", columns="eval", values="recovered_accuracy")
-        .reindex(train_order, axis=0)
-        .reindex(train_order, axis=1)
+        .reindex(ds_order, axis=0)
+        .reindex(ds_order, axis=1)
     )
     adjacency_matrix = 1 - df_train.to_numpy()
     adjacency_matrix = (adjacency_matrix.T + adjacency_matrix) / 2
@@ -696,10 +712,12 @@ def plot_dataset_perf(df, output_path, train_order):
         rotation=90,
     )
     fig.savefig(
-        output_path / "r3d_clustering.png", dpi=300, bbox_inches="tight"
+        output_path / f"{STAGE_VERSION}_r3d_clustering.png",
+        dpi=300,
+        bbox_inches="tight",
     )
     fig.tight_layout()
-    fig.show()
+    plt.close()
 
 
 def plot_truthful_qa_analysis(
@@ -750,8 +768,10 @@ def plot_truthful_qa_analysis(
     # https://arxiv.org/abs/2310.01405, table 1
     fig.add_hline(y=0.359, line_dash="dot", line_color="green")
     fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
-    fig.write_image(output_path / "r4_truthful_qa.png", scale=3)
-    fig.show()
+    fig.write_image(
+        output_path / f"{STAGE_VERSION}_r4_truthful_qa.png", scale=3
+    )
+    plt.close()
 
     perc_measuring_truth = (
         (df_truthful_qa["recovered_accuracy"] > 0.8)
@@ -762,157 +782,160 @@ def plot_truthful_qa_analysis(
     )
 
 
-def sanity_check_results(points, token_idxs, output_path, dataset, mcontext):
-    # %%
-    """
-    Validating results 1: Simple test. Do we get 80% accuracy on arc_easy?
-    """
-    results_truthful_qa = run_pipeline(
-        dataset=dataset,
-        mcontext=mcontext,
-        points=points,
-        token_idxs=token_idxs,
-        llm_ids=LLM_IDS,
-        train_datasets=[DatasetIdFilter("arc_easy")],
-        eval_datasets=[DatasetIdFilter("arc_easy")],
-        probe_methods=[
-            "ccs",
-            "lat",
-            "dim",
-            "lda",
-            "lr",
-            "lr-g",
-            "pca",
-            "pca-g",
-        ],
-        eval_splits=["validation", "train-hparams"],
-    )
-    dfv = to_dataframe(results_truthful_qa).sort_values(
-        ["supervised", "algorithm", "layer"]
-    )
-    fig = px.line(
-        dfv,
-        x="layer",
-        y="accuracy",
-        color="algorithm",
-        line_dash="supervised",
-        width=800,
-    )
-    fig.write_image(output_path / "v1_arc_easy.png", scale=3)
-    fig.show()
-
-    # %%
-    """
-    Validating results 2: Do we get the same accuracy as the GoT paper?
-    """
-    results_truthful_qa = run_pipeline(
-        dataset=dataset,
-        mcontext=mcontext,
-        points=points,
-        token_idxs=token_idxs,
-        llm_ids=LLM_IDS,
-        train_datasets=[
-            DatasetIdFilter("got_cities"),
-            DatasetIdFilter("got_larger_than"),
-            DatasetIdFilter("got_sp_en_trans"),
-        ],
-        eval_datasets=[
-            DatasetIdFilter("got_cities"),
-            DatasetIdFilter("got_larger_than"),
-            DatasetIdFilter("got_sp_en_trans"),
-        ],
-        probe_methods=["dim", "lda"],
-        eval_splits=["validation", "train-hparams"],
-    )
-
-    dfv = to_dataframe(results_truthful_qa)
-    fig = px.line(
-        dfv.query("eval == train").sort_values(["layer", "supervised"]),
-        x="layer",
-        y="accuracy",
-        facet_col="algorithm",
-        facet_row="train",
-        width=800,
-        height=600,
-    )
-    fig.write_image(output_path / "v2_got.png", scale=3)
-    fig.show()
-
-    # %%
-    """
-    Validating results 3: Do we get the same accuracy as the RepE paper?
-    """
-    train_datasets: list[DatasetId] = [
-        "race",
-        "open_book_qa",
-        "arc_easy",
-        "arc_challenge",
-    ]
-    eval_datasets: list[DatasetId] = [
-        "race/qa",
-        "open_book_qa/qa",
-        "arc_easy/qa",
-        "arc_challenge/qa",
-    ]
-    eval_datasets = train_datasets
-    results_truthful_qa = run_pipeline(
-        dataset=dataset,
-        mcontext=mcontext,
-        points=points,
-        token_idxs=token_idxs,
-        llm_ids=LLM_IDS,
-        train_datasets=list(map(DatasetIdFilter, train_datasets)),
-        eval_datasets=list(map(DatasetIdFilter, eval_datasets)),
-        probe_methods=["lat"],
-        eval_splits=["validation", "train-hparams"],
-    )
-
-    dfv = to_dataframe(results_truthful_qa)
-    dfv = dfv[dfv["train"] == dfv["eval"]]  # .str.rstrip("/qa")]
-    fig = px.line(
-        dfv.sort_values("layer"),  # type: ignore
-        x="layer",
-        y="accuracy",
-        color="train",
-        color_discrete_map={
-            "race": "red",
-            "open_book_qa": "blue",
-            "arc_easy": "green",
-            "arc_challenge": "orange",
-        },
-        range_y=[0, 1],
-        width=800,
-    )
-    fig.add_hline(y=0.459, line_dash="dot", line_color="red")
-    fig.add_hline(y=0.547, line_dash="dot", line_color="blue")
-    fig.add_hline(y=0.803, line_dash="dot", line_color="green")
-    fig.add_hline(y=0.532, line_dash="dot", line_color="orange")
-    fig.write_image(output_path / "v3_repe.png", scale=3)
-    fig.show()
-
-    # %%
-    """
-    Validating results 4: Investigating LDA performance
-    """
-    raise NotImplementedError()
-    fig = px.bar(
-        pd.concat(
-            [
-                df.query("train == 'boolq'").assign(type="train_boolq"),
-                df.query("train == eval").assign(type="train_eval"),
-            ]
+def sanity_check_results(
+    points, token_idxs, output_path, dataset, mcontext, df
+):
+    if "arc_easy" in df["train"].unique():
+        """
+        Validating results 1: Simple test. Do we get 80% accuracy on arc_easy?
+        """
+        results_arc_easy = run_pipeline(
+            dataset=dataset,
+            mcontext=mcontext,
+            points=points,
+            token_idxs=token_idxs,
+            llm_ids=LLM_IDS,
+            train_datasets=[DatasetIdFilter("arc_easy")],
+            eval_datasets=[DatasetIdFilter("arc_easy")],
+            probe_methods=[
+                "ccs",
+                "lat",
+                "dim",
+                "lda",
+                "lr",
+                "lr-g",
+                "pca",
+                "pca-g",
+            ],
+            eval_splits=["validation", "train-hparams"],
         )
-        .query("algorithm == 'LDA' or algorithm == 'DIM'")
-        .query("layer == 21"),
-        y="accuracy",
-        x="eval",
-        color="algorithm",
-        facet_row="type",
-        barmode="group",
-        width=800,
-    )
-    fig.write_image(output_path / "v4_lda.png", scale=3)
-    fig.show()
+        dfv = to_dataframe(results_arc_easy).sort_values(
+            ["supervised", "algorithm", "layer"]
+        )
+        fig = px.line(
+            dfv,
+            x="layer",
+            y="accuracy",
+            color="algorithm",
+            line_dash="supervised",
+            width=800,
+        )
+        fig.write_image(
+            output_path / f"{STAGE_VERSION}_v1_arc_easy.png", scale=3
+        )
+        plt.close()
+
+    if "got_cities" in df["train"].unique():
+        """
+        Validating results 2: Do we get the same accuracy as the GoT paper?
+        """
+        results_got = run_pipeline(
+            dataset=dataset,
+            mcontext=mcontext,
+            points=points,
+            token_idxs=token_idxs,
+            llm_ids=LLM_IDS,
+            train_datasets=[
+                DatasetIdFilter("got_cities"),
+                DatasetIdFilter("got_larger_than"),
+                DatasetIdFilter("got_sp_en_trans"),
+            ],
+            eval_datasets=[
+                DatasetIdFilter("got_cities"),
+                DatasetIdFilter("got_larger_than"),
+                DatasetIdFilter("got_sp_en_trans"),
+            ],
+            probe_methods=["dim", "lda"],
+            eval_splits=["validation", "train-hparams"],
+        )
+
+        dfv = to_dataframe(results_got)
+        fig = px.line(
+            dfv.query("eval == train").sort_values(["layer", "supervised"]),
+            x="layer",
+            y="accuracy",
+            facet_col="algorithm",
+            facet_row="train",
+            width=800,
+            height=600,
+        )
+        fig.write_image(output_path / f"{STAGE_VERSION}_v2_got.png", scale=3)
+        plt.close()
+
+    if "race" in df["train"].unique():
+        """
+        Validating results 3: Do we get the same accuracy as the RepE paper?
+        """
+        train_datasets: list[DatasetId] = [
+            "race",
+            "open_book_qa",
+            "arc_easy",
+            "arc_challenge",
+        ]
+        eval_datasets: list[DatasetId] = [
+            "race/qa",
+            "open_book_qa/qa",
+            "arc_easy/qa",
+            "arc_challenge/qa",
+        ]
+        eval_datasets = train_datasets
+        results_RepE = run_pipeline(
+            dataset=dataset,
+            mcontext=mcontext,
+            points=points,
+            token_idxs=token_idxs,
+            llm_ids=LLM_IDS,
+            train_datasets=list(map(DatasetIdFilter, train_datasets)),
+            eval_datasets=list(map(DatasetIdFilter, eval_datasets)),
+            probe_methods=["lat"],
+            eval_splits=["validation", "train-hparams"],
+        )
+
+        dfv = to_dataframe(results_RepE)
+        dfv = dfv[dfv["train"] == dfv["eval"]]  # .str.rstrip("/qa")]
+        fig = px.line(
+            dfv.sort_values("layer"),  # type: ignore
+            x="layer",
+            y="accuracy",
+            color="train",
+            color_discrete_map={
+                "race": "red",
+                "open_book_qa": "blue",
+                "arc_easy": "green",
+                "arc_challenge": "orange",
+            },
+            range_y=[0, 1],
+            width=800,
+        )
+        fig.add_hline(y=0.459, line_dash="dot", line_color="red")
+        fig.add_hline(y=0.547, line_dash="dot", line_color="blue")
+        fig.add_hline(y=0.803, line_dash="dot", line_color="green")
+        fig.add_hline(y=0.532, line_dash="dot", line_color="orange")
+        fig.write_image(output_path / f"{STAGE_VERSION}_v3_repe.png", scale=3)
+        plt.close()
+
+    if "LDA" in df["algorithm"].unique():
+        """
+        Validating results 4: Investigating LDA performance
+        """
+        fig = px.bar(
+            pd.concat(
+                [
+                    df.query("train == 'boolq'").assign(type="train_boolq"),
+                    df.query("train == eval").assign(type="train_eval"),
+                ]
+            )
+            .query("algorithm == 'LDA' or algorithm == 'DIM'")
+            .query("layer == 5" if DEBUG else "layer == 21"),
+            y="accuracy",
+            x="eval",
+            color="algorithm",
+            facet_row="type",
+            barmode="group",
+            width=800,
+        )
+        fig.write_image(output_path / f"{STAGE_VERSION}_v4_lda.png", scale=3)
+        plt.close()
 
 
 DIMS = {
@@ -926,10 +949,13 @@ DLK_DATASETS = resolve_dataset_ids("dlk")
 REPE_DATASETS = resolve_dataset_ids("repe")
 GOT_DATASETS = resolve_dataset_ids("got")
 COLORS = list(reversed(px.colors.sequential.YlOrRd))
-LLM_IDS = [MODEL_FOR_DEBUGGING] if DEBUG else ["Llama-2-13b-chat-hf"]
-COLLECTIONS = ["got"] if DEBUG else ["dlk", "repe", "got"]
+LLM_IDS = get_model_ids()
+COLLECTIONS = get_collection_ids()
+STAGE_VERSION = "v0.1"  # To reset caching...
+
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     if DEBUG:
         activation_ds_paths = [f"{ACTIVATION_DIR}/debug.pickle.pickle"]
     else:
