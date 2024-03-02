@@ -10,16 +10,20 @@ from mppr import MContext
 from pydantic import BaseModel
 from sklearn.decomposition import PCA
 
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.utils.filters import DatasetFilter, DatasetIdFilter
-from repeng.evals.logits import eval_logits_by_question, eval_logits_by_row
-from repeng.evals.probes import eval_probe_by_question
-from repeng.models.points import get_points
-from repeng.models.types import LlmId
-from repeng.probes.base import BaseProbe
-from repeng.probes.collections import SUPERVISED_PROBES, ProbeMethod, train_probe
-from repeng.probes.difference_in_means import train_dim_probe
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.utils.filters import DatasetFilter, DatasetIdFilter
+from meta_evals.evals.logits import eval_logits_by_question, eval_logits_by_row
+from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.models.points import get_points
+from meta_evals.models.types import LlmId
+from meta_evals.probes.base import BaseProbe
+from meta_evals.probes.collections import (
+    SUPERVISED_PROBES,
+    ProbeMethod,
+    train_probe,
+)
+from meta_evals.probes.difference_in_means import train_dim_probe
 
 LLM_IDS: list[LlmId] = [
     # "Llama-2-7b-hf",
@@ -110,7 +114,13 @@ def run_probe_pipeline(
     train_specs = mcontext.create(
         {
             "-".join(
-                [llm_id, str(train_dataset), probe_method, point.name, str(token_idx)]
+                [
+                    llm_id,
+                    str(train_dataset),
+                    probe_method,
+                    point.name,
+                    str(token_idx),
+                ]
             ): Spec(
                 llm_id=llm_id,
                 dataset=train_dataset,
@@ -204,7 +214,9 @@ def run_logprobs_pipeline(
     return (
         mcontext.create(
             {
-                f"{llm_id}-{eval_dataset}": LogprobEvalSpec(llm_id, eval_dataset)
+                f"{llm_id}-{eval_dataset}": LogprobEvalSpec(
+                    llm_id, eval_dataset
+                )
                 for llm_id in llm_ids
                 for eval_dataset in datasets
             }
@@ -241,7 +253,9 @@ def _eval_logprobs(spec: LogprobEvalSpec) -> LogprobsPipelineResultRow:
     return LogprobsPipelineResultRow(
         llm_id=spec.llm_id,
         dataset=spec.dataset.get_name(),
-        accuracy=question_result.accuracy if question_result else row_result.accuracy,
+        accuracy=question_result.accuracy
+        if question_result
+        else row_result.accuracy,
     )
 
 
@@ -575,7 +589,13 @@ fig = px.bar(
     facet_col="dataset",
     facet_row="family",
     category_orders={
-        "family": ["Llama-2-7b", "Llama-2-13b", "gemma-2b", "gemma-7b", "Mistral-7B"],
+        "family": [
+            "Llama-2-7b",
+            "Llama-2-13b",
+            "gemma-2b",
+            "gemma-7b",
+            "Mistral-7B",
+        ],
         "type": ["base", "chat"],
         "dataset": [d.get_name() for d in DATASETS],
     },
@@ -611,7 +631,13 @@ fig = px.line(
     facet_col="dataset",
     facet_row="family",
     category_orders={
-        "family": ["Llama-2-7b", "Llama-2-13b", "gemma-2b", "gemma-7b", "Mistral-7B"],
+        "family": [
+            "Llama-2-7b",
+            "Llama-2-13b",
+            "gemma-2b",
+            "gemma-7b",
+            "Mistral-7B",
+        ],
         "type": ["base", "chat"],
         "dataset": [d.get_name() for d in DATASETS],
     },

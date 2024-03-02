@@ -6,9 +6,9 @@ import plotly.express as px
 from mppr import MContext, MDict
 from pydantic import BaseModel
 
-from repeng.datasets.elk.types import BinaryRow, DatasetId
-from repeng.datasets.elk.utils.collections import resolve_dataset_ids
-from repeng.datasets.elk.utils.fns import get_dataset
+from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.utils.collections import resolve_dataset_ids
+from meta_evals.datasets.elk.utils.fns import get_dataset
 
 
 # %%

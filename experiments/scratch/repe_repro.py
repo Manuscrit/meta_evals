@@ -12,11 +12,14 @@ from mppr import mppr
 from sklearn.decomposition import PCA
 from torchtyping import TensorType
 
-from repeng import models
-from repeng.activations import ActivationRow, get_activations
-from repeng.datasets.elk.true_false import TrueFalseRow, get_true_false_dataset
-from repeng.hooks.grab import grab
-from repeng.hooks.patch import patch
+from meta_evals import models
+from meta_evals.activations import ActivationRow, get_activations
+from meta_evals.datasets.elk.true_false import (
+    TrueFalseRow,
+    get_true_false_dataset,
+)
+from meta_evals.hooks.grab import grab
+from meta_evals.hooks.patch import patch
 
 # %%
 device = torch.device("cuda")
@@ -100,7 +103,9 @@ df = (
 
 # %%
 activations_truth = np.mean(df[df["is_true"]]["activation"].tolist(), axis=0)
-activations_falsehoods = np.mean(df[~df["is_true"]]["activation"].tolist(), axis=0)
+activations_falsehoods = np.mean(
+    df[~df["is_true"]]["activation"].tolist(), axis=0
+)
 truth_activation = torch.tensor(activations_truth - activations_falsehoods)
 print(
     np.linalg.norm(activations_truth),
@@ -114,9 +119,9 @@ num_pairs = 100_000
 indices_1 = np.random.randint(low=0, high=df.shape[0], size=num_pairs)
 indices_2 = np.random.randint(low=0, high=df.shape[0], size=num_pairs)
 activation_diffs = activations[indices_1] - activations[indices_2]
-activation_diffs = (activation_diffs - np.mean(activation_diffs, axis=0)) / np.std(
-    activation_diffs, axis=0
-)
+activation_diffs = (
+    activation_diffs - np.mean(activation_diffs, axis=0)
+) / np.std(activation_diffs, axis=0)
 
 pca = PCA(n_components=4)
 pca.fit_transform(activation_diffs)

@@ -8,18 +8,18 @@ import torch
 from jaxtyping import Float, Int64
 from mppr import MContext
 
-from repeng.activations.probe_preparations import (
+from meta_evals.activations.probe_preparations import (
     Activation,
     LabeledGroupedActivationArray,
     prepare_activations_for_probes,
 )
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.types import DatasetId, Split
-from repeng.evals.probes import eval_probe_by_question
-from repeng.hooks.grab import grab
-from repeng.models.llms import pythia
-from repeng.probes.base import BaseGroupedProbe, BaseProbe, PredictResult
-from repeng.probes.collections import ProbeMethod, train_probe
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.types import DatasetId, Split
+from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.hooks.grab import grab
+from meta_evals.models.llms import pythia
+from meta_evals.probes.base import BaseGroupedProbe, BaseProbe, PredictResult
+from meta_evals.probes.collections import ProbeMethod, train_probe
 
 # %%
 # # so we don't have to re-load massive file
@@ -255,7 +255,9 @@ df["accuracy"] = df.apply(
 )
 df = df[df["dataset"] == "arc_easy"]
 g = sns.FacetGrid(df, col="probe_method", row="token")
-g = g.map(sns.lineplot, "layer", "question_eval_results", "num_samples", marker="o")
+g = g.map(
+    sns.lineplot, "layer", "question_eval_results", "num_samples", marker="o"
+)
 g.add_legend()
 for ax in g.axes.flat:
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90)

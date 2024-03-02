@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from repeng.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.activations.types import ActivationResultRow
 
 # %%
 path = Path("../../output/comparison/activations_results.pickle")

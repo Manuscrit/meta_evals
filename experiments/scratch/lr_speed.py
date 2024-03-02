@@ -8,11 +8,11 @@ import pandas as pd
 import plotly.express as px
 from mppr import MContext
 
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.utils.filters import DatasetIdFilter
-from repeng.models.points import get_points
-from repeng.probes.logistic_regression import train_lr_probe
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.utils.filters import DatasetIdFilter
+from meta_evals.models.points import get_points
+from meta_evals.probes.logistic_regression import train_lr_probe
 
 # %%
 activations = np.random.normal(size=(800, 4096))
@@ -44,7 +44,9 @@ for point in points:
     labels = arrays.labels
     for solver in ["lbfgs", "liblinear", "newton-cg"]:
         start = datetime.now()
-        probe = train_lr_probe(activations=activations, labels=labels, solver=solver)
+        probe = train_lr_probe(
+            activations=activations, labels=labels, solver=solver
+        )
         end = datetime.now()
         results.append(
             dict(

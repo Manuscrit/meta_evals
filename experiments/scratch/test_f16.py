@@ -5,11 +5,11 @@ import numpy as np
 import plotly.express as px
 from mppr import MContext
 
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.evals.logits import eval_logits_by_question
-from repeng.evals.probes import eval_probe_by_question
-from repeng.probes.logistic_regression import train_grouped_lr_probe
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.evals.logits import eval_logits_by_question
+from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.probes.logistic_regression import train_grouped_lr_probe
 
 # %%
 mcontext = MContext(Path("../output/comparison"))
@@ -82,9 +82,9 @@ print(
 # %%
 activations = arrays.activations.copy()
 for group in np.unique(arrays.groups):
-    activations[arrays.groups == group] -= activations[arrays.groups == group].mean(
-        axis=0
-    )
+    activations[arrays.groups == group] -= activations[
+        arrays.groups == group
+    ].mean(axis=0)
 
 (idxs0,) = np.where(arrays.labels == 0)
 (idxs1,) = np.where(arrays.labels == 1)

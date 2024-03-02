@@ -4,8 +4,8 @@ from pathlib import Path
 import torch
 from mppr import MContext
 
-from repeng.datasets.elk.utils.collections import get_datasets
-from repeng.models.llms import get_llm
+from meta_evals.datasets.elk.utils.collections import get_datasets
+from meta_evals.models.llms import get_llm
 
 # %%
 llm = get_llm("gpt2", device=torch.device("cuda"), dtype=torch.bfloat16)

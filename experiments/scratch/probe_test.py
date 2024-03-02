@@ -13,19 +13,19 @@ from mppr import MContext
 from sklearn.decomposition import PCA
 from sklearn.metrics import roc_auc_score
 
-from repeng.activations.inference import get_model_activations
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.types import BinaryRow, DatasetId
-from repeng.datasets.elk.utils.collections import get_datasets
-from repeng.datasets.elk.utils.limits import limit_dataset_and_split_fn
-from repeng.evals.logits import eval_logits_by_question
-from repeng.evals.probes import eval_probe_by_question, eval_probe_by_row
-from repeng.models.loading import load_llm_oioo
-from repeng.models.points import get_points
-from repeng.models.types import LlmId
-from repeng.probes.collections import ProbeMethod, train_probe
-from repeng.probes.logistic_regression import train_lr_probe
+from meta_evals.activations.inference import get_model_activations
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.utils.collections import get_datasets
+from meta_evals.datasets.elk.utils.limits import limit_dataset_and_split_fn
+from meta_evals.evals.logits import eval_logits_by_question
+from meta_evals.evals.probes import eval_probe_by_question, eval_probe_by_row
+from meta_evals.models.loading import load_llm_oioo
+from meta_evals.models.points import get_points
+from meta_evals.models.types import LlmId
+from meta_evals.probes.collections import ProbeMethod, train_probe
+from meta_evals.probes.logistic_regression import train_lr_probe
 
 # %%
 mcontext = MContext(Path("../output/probe_test"))
@@ -202,7 +202,10 @@ df = (
     .map_cached(
         "train-and-eval",
         lambda _, args: train_and_eval(
-            llm_id=args[0], point=args[1], probe_method=args[2], dataset_id=args[3]
+            llm_id=args[0],
+            point=args[1],
+            probe_method=args[2],
+            dataset_id=args[3],
         ),
         to="pickle",
     )
@@ -318,7 +321,9 @@ for llm_id in llm_ids:
     df2 = df2[df2["model"] == llm_id]
     # df2 = df2[df2["dataset_id"] == dataset_id]
     point_name = get_points(llm_id)[-8].name  # second-to-last layer
-    a = np.stack(df2["activations"].apply(lambda a: a[point_name][-1]).to_list())
+    a = np.stack(
+        df2["activations"].apply(lambda a: a[point_name][-1]).to_list()
+    )
     for answer_tag in df2["answer_tag"].unique():
         if answer_tag is None:
             continue
@@ -492,7 +497,8 @@ df_eval = pd.DataFrame(
         dict(
             probe_method=probe_method,
             **eval_probe_by_row(
-                train_probe(probe_method, probe_arrays), probe_arrays_val.labeled
+                train_probe(probe_method, probe_arrays),
+                probe_arrays_val.labeled,
             ).model_dump(),
         )
         for probe_method in probe_methods

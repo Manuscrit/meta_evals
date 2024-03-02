@@ -7,15 +7,15 @@ import torch
 from mppr import MContext
 from sklearn.decomposition import PCA
 
-from repeng.activations.inference import get_model_activations
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.types import BinaryRow, DatasetId
-from repeng.datasets.elk.utils.collections import get_datasets
-from repeng.datasets.elk.utils.limits import limit_dataset_and_split_fn
-from repeng.evals.logits import eval_logits_by_question
-from repeng.models.loading import load_llm_oioo
-from repeng.models.types import LlmId
+from meta_evals.activations.inference import get_model_activations
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.utils.collections import get_datasets
+from meta_evals.datasets.elk.utils.limits import limit_dataset_and_split_fn
+from meta_evals.evals.logits import eval_logits_by_question
+from meta_evals.models.loading import load_llm_oioo
+from meta_evals.models.types import LlmId
 
 mcontext = MContext(Path("../output/comparison"))
 
@@ -58,7 +58,8 @@ input_specs = (
     )
     .flat_map(
         lambda key, row: {
-            f"{key}-{llm_id}": InputSpec(row=row, llm_id=llm_id) for llm_id in llm_ids
+            f"{key}-{llm_id}": InputSpec(row=row, llm_id=llm_id)
+            for llm_id in llm_ids
         }
     )
     .sort(lambda _, row: llm_ids.index(row.llm_id))

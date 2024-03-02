@@ -1,7 +1,7 @@
 import torch
 
-from repeng.datasets.activations.creation import create_activations_dataset
-from repeng.datasets.elk.utils.limits import Limits, SplitLimits
+from meta_evals.datasets.activations.creation import create_activations_dataset
+from meta_evals.datasets.elk.utils.limits import Limits, SplitLimits
 
 """
 4 models

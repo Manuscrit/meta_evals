@@ -10,12 +10,12 @@ from dotenv import load_dotenv
 from mppr import MContext
 from pydantic import BaseModel
 
-from repeng.datasets.modelwritten.filtering import (
+from meta_evals.datasets.modelwritten.filtering import (
     FilteringConfig,
     StatementLikelihood,
     get_statement_likelihood,
 )
-from repeng.datasets.modelwritten.generation import (
+from meta_evals.datasets.modelwritten.generation import (
     GenerationConfig,
     Statements,
     generate_statements,
@@ -163,7 +163,8 @@ num_output_tokens = (
     * 1.1
 )
 cost_per_generation = (
-    cost_per_input_token * num_input_tokens + cost_per_output_token * num_output_tokens
+    cost_per_input_token * num_input_tokens
+    + cost_per_output_token * num_output_tokens
 )
 print(f"Cost per generation: ${cost_per_generation:.5f}")
 print(f"Cost for 1K generations: ${cost_per_generation * 1000:.5f}")

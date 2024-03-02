@@ -11,18 +11,29 @@ from mppr import MContext
 from sklearn.decomposition import PCA
 from tqdm import tqdm
 
-from repeng.activations.inference import get_model_activations
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.types import BinaryRow
-from repeng.datasets.elk.utils.filters import DATASET_FILTER_FNS, DatasetIdFilter
-from repeng.datasets.elk.utils.fns import get_datasets
-from repeng.datasets.elk.utils.limits import Limits, SplitLimits, limit_groups
-from repeng.evals.probes import eval_probe_by_question
-from repeng.models.loading import load_llm_oioo
-from repeng.models.points import get_points
-from repeng.models.types import LlmId
-from repeng.probes.collections import ALL_PROBES, SUPERVISED_PROBES, train_probe
+from meta_evals.activations.inference import get_model_activations
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.types import BinaryRow
+from meta_evals.datasets.elk.utils.filters import (
+    DATASET_FILTER_FNS,
+    DatasetIdFilter,
+)
+from meta_evals.datasets.elk.utils.fns import get_datasets
+from meta_evals.datasets.elk.utils.limits import (
+    Limits,
+    SplitLimits,
+    limit_groups,
+)
+from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.models.loading import load_llm_oioo
+from meta_evals.models.points import get_points
+from meta_evals.models.types import LlmId
+from meta_evals.probes.collections import (
+    ALL_PROBES,
+    SUPERVISED_PROBES,
+    train_probe,
+)
 
 assert load_dotenv(".env")
 
@@ -64,7 +75,11 @@ inputs = (
     .filter(
         limit_groups(limits),
     )
-    .flat_map(lambda key, row: {f"{key}-{llm_id}": (row, llm_id) for llm_id in llm_ids})
+    .flat_map(
+        lambda key, row: {
+            f"{key}-{llm_id}": (row, llm_id) for llm_id in llm_ids
+        }
+    )
     .sort(lambda _, row: llm_ids.index(row[1]))
 )
 activations = inputs.map_cached(

@@ -14,19 +14,19 @@ from mppr import MContext
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from repeng.activations.probe_preparations import ActivationArrayDataset
-from repeng.datasets.activations.types import ActivationResultRow
-from repeng.datasets.elk.types import DatasetId, Split
-from repeng.datasets.elk.utils.collections import (
+from meta_evals.activations.probe_preparations import ActivationArrayDataset
+from meta_evals.datasets.activations.types import ActivationResultRow
+from meta_evals.datasets.elk.types import DatasetId, Split
+from meta_evals.datasets.elk.utils.collections import (
     DatasetCollectionId,
     resolve_dataset_ids,
 )
-from repeng.datasets.elk.utils.filters import DatasetFilter, DatasetIdFilter
-from repeng.evals.probes import eval_probe_by_question, eval_probe_by_row
-from repeng.models.llms import LlmId
-from repeng.models.points import get_points
-from repeng.probes.base import BaseProbe
-from repeng.probes.collections import (
+from meta_evals.datasets.elk.utils.filters import DatasetFilter, DatasetIdFilter
+from meta_evals.evals.probes import eval_probe_by_question, eval_probe_by_row
+from meta_evals.models.llms import LlmId
+from meta_evals.models.points import get_points
+from meta_evals.probes.base import BaseProbe
+from meta_evals.probes.collections import (
     ALL_PROBES,
     GROUPED_PROBES,
     SUPERVISED_PROBES,
@@ -120,7 +120,13 @@ def run_pipeline(
     train_specs = mcontext.create(
         {
             "-".join(
-                [llm_id, str(train_dataset), probe_method, point.name, str(token_idx)]
+                [
+                    llm_id,
+                    str(train_dataset),
+                    probe_method,
+                    point.name,
+                    str(token_idx),
+                ]
             ): TrainSpec(
                 llm_id=llm_id,
                 dataset=train_dataset,
@@ -222,7 +228,9 @@ def _eval_probe_on_split(
             labels=arrays.labels,
             groups=arrays.groups,
         )
-        return EvalResult(accuracy=question_result.accuracy, n=question_result.n)
+        return EvalResult(
+            accuracy=question_result.accuracy, n=question_result.n
+        )
     else:
         row_result = eval_probe_by_row(
             probe, activations=arrays.activations, labels=arrays.labels
@@ -260,14 +268,20 @@ def to_dataframe(results: Sequence[PipelineResultRow]) -> pd.DataFrame:
     df["eval"] = df["eval"].replace(
         {"dlk-val": "dlk", "repe-qa-val": "repe", "got-val": "got"}
     )
-    df["supervised"] = np.where(df["algorithm"].isin(SUPERVISED_PROBES), "sup", "unsup")
+    df["supervised"] = np.where(
+        df["algorithm"].isin(SUPERVISED_PROBES), "sup", "unsup"
+    )
     df["grouped"] = np.where(
         df["algorithm"].isin(GROUPED_PROBES), "grouped", "ungrouped"
     )
     df["layer"] = df["point_name"].apply(lambda p: int(p.lstrip("h")))
     df["train_group"] = df["train"].apply(
         lambda d: (
-            "dlk" if d in DLK_DATASETS else "repe" if d in REPE_DATASETS else "got"
+            "dlk"
+            if d in DLK_DATASETS
+            else "repe"
+            if d in REPE_DATASETS
+            else "got"
         )
     )
     df["algorithm"] = df["algorithm"].str.upper()
@@ -276,7 +290,10 @@ def to_dataframe(results: Sequence[PipelineResultRow]) -> pd.DataFrame:
 
 
 def select_best(
-    df: pd.DataFrame, column: str, metric: str, extra_dims: list[str] | None = None
+    df: pd.DataFrame,
+    column: str,
+    metric: str,
+    extra_dims: list[str] | None = None,
 ) -> pd.DataFrame:
     extra_dims = extra_dims or []
     return (
@@ -303,7 +320,9 @@ results = run_pipeline(
 
 # %%
 df = to_dataframe(results)
-thresholds_idx = df.query("train == eval").groupby("eval")["accuracy_hparams"].idxmax()
+thresholds_idx = (
+    df.query("train == eval").groupby("eval")["accuracy_hparams"].idxmax()
+)
 thresholds = (
     df.loc[thresholds_idx][["eval", "accuracy", "accuracy_n"]]
     .rename(
@@ -332,7 +351,9 @@ on all datasets that *neither* probe has been trained on.
 """
 probes = (
     df.sort_values("eval")
-    .groupby(["train", "algorithm", "layer"])[["eval", "recovered_accuracy_hparams"]]
+    .groupby(["train", "algorithm", "layer"])[
+        ["eval", "recovered_accuracy_hparams"]
+    ]
     .agg(list)
     .reset_index()
 )
@@ -408,7 +429,9 @@ algorithm_order = (
 
 # %%
 fig = px.ecdf(
-    df.groupby(["algorithm", "train", "layer", "supervised"])["recovered_accuracy"]
+    df.groupby(["algorithm", "train", "layer", "supervised"])[
+        "recovered_accuracy"
+    ]
     .mean()
     .reset_index(),
     x="recovered_accuracy",
@@ -423,11 +446,15 @@ fig.show()
 
 perc_above_80 = np.mean(
     df.query("layer >= 13")
-    .groupby(["algorithm", "train", "layer", "supervised"])["recovered_accuracy"]
+    .groupby(["algorithm", "train", "layer", "supervised"])[
+        "recovered_accuracy"
+    ]
     .mean()
     > 0.8
 )
-print(f"Percent of layer 13+ probes with >80% recovered accuracy: {perc_above_80:.1%}")
+print(
+    f"Percent of layer 13+ probes with >80% recovered accuracy: {perc_above_80:.1%}"
+)
 
 # %%
 """
@@ -447,7 +474,9 @@ df_best_probes = (
     .reset_index()
 )
 fig = px.imshow(
-    df_best_probes.pivot(index="algorithm", columns="eval", values="recovered_accuracy")
+    df_best_probes.pivot(
+        index="algorithm", columns="eval", values="recovered_accuracy"
+    )
     .reindex(algorithm_order, axis=0)
     .reindex([d for d in train_order if d != best_train], axis=1)
     .rename(index={best_algorithm: f"<b>{best_algorithm} (best)</b>"}),
@@ -470,7 +499,9 @@ df_best_train = (
     .reset_index()
 )
 fig = px.imshow(
-    df_best_train.pivot(index="train", columns="eval", values="recovered_accuracy")
+    df_best_train.pivot(
+        index="train", columns="eval", values="recovered_accuracy"
+    )
     .reindex(train_order, axis=0)
     .reindex([d for d in train_order if d != best_train], axis=1)
     .rename(index={best_train: f"<b>{best_train} (best)</b>"})
@@ -498,9 +529,9 @@ df_best_layer = df_best_layer.pivot(
 )
 df_best_layer.index = df_best_layer.index.map(str)
 fig = px.imshow(
-    df_best_layer.reindex([d for d in train_order if d != best_train], axis=1).rename(
-        index={str(best_layer): f"<b>{best_layer} (best)</b>"}
-    ),
+    df_best_layer.reindex(
+        [d for d in train_order if d != best_train], axis=1
+    ).rename(index={str(best_layer): f"<b>{best_layer} (best)</b>"}),
     color_continuous_scale=COLORS,
     range_color=[0, 1],
     text_auto=".0%",  # type: ignore
@@ -583,8 +614,12 @@ fig.show()
 df_sym = (
     pd.concat(
         [
-            df.groupby("train")["recovered_accuracy"].mean().rename("generalizes_from"),
-            df.groupby("eval")["recovered_accuracy"].mean().rename("generalizes_to"),
+            df.groupby("train")["recovered_accuracy"]
+            .mean()
+            .rename("generalizes_from"),
+            df.groupby("eval")["recovered_accuracy"]
+            .mean()
+            .rename("generalizes_to"),
         ],
         axis=1,
     )
@@ -592,7 +627,9 @@ df_sym = (
     .rename({"index": "dataset"}, axis=1)
 )
 df_sym["group"] = df_sym["dataset"].apply(
-    lambda d: ("dlk" if d in DLK_DATASETS else "repe" if d in REPE_DATASETS else "got")
+    lambda d: (
+        "dlk" if d in DLK_DATASETS else "repe" if d in REPE_DATASETS else "got"
+    )
 )
 fig = px.scatter(
     df_sym,
@@ -685,7 +722,9 @@ perc_measuring_truth = (
     (df_truthful_qa["recovered_accuracy"] > 0.8)
     & (df_truthful_qa["truthful_qa"] > 0.359)
 ).sum() / (df_truthful_qa["recovered_accuracy"] > 0.8).sum()
-print(f"Percent of probes with >80% recovered accuracy: {perc_measuring_truth:.1%}")
+print(
+    f"Percent of probes with >80% recovered accuracy: {perc_measuring_truth:.1%}"
+)
 
 
 # %%

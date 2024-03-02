@@ -6,16 +6,19 @@ import plotly.graph_objects as go
 from jaxtyping import Float
 from tqdm import tqdm
 
-from repeng.activations.probe_preparations import ActivationArrays
-from repeng.probes.base import DotProductProbe
-from repeng.probes.collections import ProbeMethod, train_probe
-from repeng.probes.contrast_consistent_search import (
+from meta_evals.activations.probe_preparations import ActivationArrays
+from meta_evals.probes.base import DotProductProbe
+from meta_evals.probes.collections import ProbeMethod, train_probe
+from meta_evals.probes.contrast_consistent_search import (
     CcsProbe,
     CcsTrainingConfig,
     train_ccs_probe,
 )
-from repeng.probes.linear_artificial_tomography import train_lat_probe
-from repeng.probes.logistic_regression import LogisticRegressionProbe, train_lr_probe
+from meta_evals.probes.linear_artificial_tomography import train_lat_probe
+from meta_evals.probes.logistic_regression import (
+    LogisticRegressionProbe,
+    train_lr_probe,
+)
 
 # %%
 anisotropy_offset = np.array([0, 0], dtype=np.float32)
@@ -26,7 +29,9 @@ truth_cov = np.array([[0.01, 0], [0, 0.01]])
 num_samples = int(1e3)
 
 random_false = np.random.multivariate_normal(
-    mean=anisotropy_offset + dataset_direction, cov=dataset_cov, size=num_samples
+    mean=anisotropy_offset + dataset_direction,
+    cov=dataset_cov,
+    size=num_samples,
 )
 random_true = random_false + np.random.multivariate_normal(
     mean=truth_direction, cov=truth_cov, size=num_samples
@@ -85,7 +90,12 @@ def plot_probe(
     # TODO: Why swapped?
     fig.add_trace(
         go.Scatter(
-            x=ys, y=xs, mode="lines", name=label, line=dict(width=3), opacity=0.6
+            x=ys,
+            y=xs,
+            mode="lines",
+            name=label,
+            line=dict(width=3),
+            opacity=0.6,
         )
     )
 

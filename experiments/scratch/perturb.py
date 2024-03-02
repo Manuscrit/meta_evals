@@ -7,7 +7,7 @@ from datasets import load_dataset
 from nnsight import LanguageModel
 from tqdm import tqdm
 
-from repeng.models.llms import pythia
+from meta_evals.models.llms import pythia
 
 # %%
 model = LanguageModel("EleutherAI/pythia-70m")
@@ -21,12 +21,16 @@ BATCH_SIZE = 8
 seqs = []
 for row in islice(dataset["train"], 0, NUM_ROWS):
     prompt = row["text"]
-    tokens = cast(torch.Tensor, model.tokenizer.encode(prompt, return_tensors="pt"))
+    tokens = cast(
+        torch.Tensor, model.tokenizer.encode(prompt, return_tensors="pt")
+    )
     tokens = tokens.squeeze(0)
     for i in range(0, len(tokens), SEQ):
         seqs.append(
             torch.nn.functional.pad(
-                tokens[i : i + SEQ], (0, SEQ - len(tokens[i : i + SEQ])), value=0
+                tokens[i : i + SEQ],
+                (0, SEQ - len(tokens[i : i + SEQ])),
+                value=0,
             )
         )
 tokens = torch.stack(seqs)
@@ -55,7 +59,9 @@ for _ in pbar:
     new_direction_norm = new_direction / new_direction.norm()
 
     output = model(activations)  # (N_SAMPLES, N_HIDDEN)
-    output_mod = model(activations + new_direction_norm)  # (N_SAMPLES, N_HIDDEN)
+    output_mod = model(
+        activations + new_direction_norm
+    )  # (N_SAMPLES, N_HIDDEN)
     similarities = output @ output_mod.T
     loss = -similarities.mean()
     loss.backward()

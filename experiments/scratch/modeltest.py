@@ -1,8 +1,8 @@
 import torch
 from dotenv import load_dotenv
 
-from repeng.hooks.grab import grab
-from repeng.models.loading import load_llm_oioo
+from meta_evals.hooks.grab import grab
+from meta_evals.models.loading import load_llm_oioo
 
 assert load_dotenv()
 
