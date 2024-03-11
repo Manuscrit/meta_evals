@@ -7,22 +7,23 @@ from pydantic import BaseModel
 
 from meta_evals.activations.inference import get_model_activations
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.elk.utils.fns import get_dataset
 from meta_evals.datasets.elk.utils.limits import Limits, limit_groups
 from meta_evals.models.llms import LlmId
 from meta_evals.models.loading import load_llm_oioo
-from meta_evals.utils.constants import ACTIVATION_DIR, DEBUG
+from meta_evals.utils.constants import ACTIVATION_DIR, DEBUG, FASTER_RUN
+from meta_evals.utils.utils import check_for_mps
 
 assert load_dotenv()
 
 
-class _BinaryRowWithLlm(BinaryRow):
+class _RowWithLlm(Row):
     llm_id: LlmId
 
 
 class _Dataset(BaseModel, extra="forbid"):
-    rows: dict[str, BinaryRow]
+    rows: dict[str, Row]
 
 
 def create_activations_dataset(
@@ -42,7 +43,7 @@ def create_activations_dataset(
     )
     inputs = (
         dataset_ids_mdict.map_cached(
-            "datasets",
+            f"datasets_{tag}",
             lambda _, dataset_id: _Dataset(rows=get_dataset(dataset_id)),
             to=_Dataset,
         )
@@ -52,7 +53,7 @@ def create_activations_dataset(
         .filter(limit_groups(group_limits))
         .flat_map(
             lambda key, row: {
-                f"{key}-{llm_id}": _BinaryRowWithLlm(
+                f"{key}-{llm_id}": _RowWithLlm(
                     **row.model_dump(), llm_id=llm_id
                 )
                 for llm_id in llm_ids
@@ -61,14 +62,18 @@ def create_activations_dataset(
         # avoids constantly reloading models with OIOO
         .sort(lambda _, row: row.llm_id)
     )
+    print(
+        "labels",
+        set([dict(dict_)["label"] for dict_ in list(inputs.values.values())]),
+    )
     return (
         inputs.map_cached(
-            "activations",
+            f"activations_{tag}",
             fn=lambda _, value: get_model_activations(
                 load_llm_oioo(
                     value.llm_id,
                     device=device,
-                    use_half_precision=True,
+                    use_half_precision=False if check_for_mps() else True,
                 ),
                 text=value.text,
                 last_n_tokens=num_tokens_from_end,
@@ -87,13 +92,17 @@ def create_activations_dataset(
                 label=input.label,
                 activations=activations.activations,
                 prompt_logprobs=activations.token_logprobs.sum().item(),
+                next_token_logprobs=activations.next_token_logprobs,
                 group_id=input.group_id,
                 llm_id=input.llm_id,
+                answers_possible=input.answers_possible,
+                labels_possible_answers=input.labels_possible_answers,
+                prompt=input.text,
             ),
         )
         .upload(
-            f"{ACTIVATION_DIR}/{tag}.pickle"
-            if DEBUG
+            f"{ACTIVATION_DIR}/{tag}"
+            if DEBUG or FASTER_RUN
             else f"s3://repeng/datasets/activations/{tag}.pickle",
             to="pickle",
         )

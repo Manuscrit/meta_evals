@@ -1,4 +1,4 @@
-from typing import TypeVar
+from typing import TypeVar, List
 
 import numpy as np
 import torch
@@ -17,6 +17,7 @@ class ActivationRow(BaseModel, extra="forbid"):
     text_tokenized: list[str]
     activations: dict[str, NdArray]
     token_logprobs: NdArray
+    next_token_logprobs: List[tuple[int, float]]
 
     class Config:
         arbitrary_types_allowed = True
@@ -54,6 +55,16 @@ def get_model_activations(
         .squeeze(0)
         .detach()
     )
+    next_token_logprobs = logprobs[0, -1].detach()
+    filtered_indices, filtered_logprobs = filter_top_p(
+        next_token_logprobs, top_p=0.95
+    )
+    filtered_indices = filtered_indices.cpu().numpy()
+    filtered_logprobs = filtered_logprobs.cpu().numpy()
+    filtered_next_token_logprobs = [
+        (idx, logprob)
+        for idx, logprob in zip(filtered_indices, filtered_logprobs)
+    ]
 
     def get_activation(activations: torch.Tensor) -> np.ndarray:
         activations = activations.squeeze(0)
@@ -74,4 +85,39 @@ def get_model_activations(
             for name, activations in layer_activations.items()
         },
         token_logprobs=token_logprobs.float().cpu().numpy(),
+        next_token_logprobs=filtered_next_token_logprobs,
     )
+
+
+def filter_top_p(next_token_logprobs, top_p: float):
+    """
+    Filter the next_token_logprobs to only include tokens within the top_p cumulative probability.
+
+    Parameters:
+    - next_token_logprobs (torch.Tensor): The log probabilities of the next tokens, shape (num_tokens,)
+    - top_p (float): The cumulative probability threshold to include. Value between 0 and 1.
+
+    Returns:
+    - filtered_ids (torch.Tensor): The token IDs within the top_p cumulative probability.
+    - filtered_logprobs (torch.Tensor): The log probabilities of the filtered token IDs.
+    """
+    # Sort the log probabilities in descending order and also keep the original indices (token IDs)
+    sorted_logprobs, sorted_indices = torch.sort(
+        next_token_logprobs, descending=True
+    )
+
+    # Convert log probabilities to probabilities for the calculation of the cumulative sum
+    sorted_probs = torch.exp(sorted_logprobs)
+
+    # Calculate the cumulative probabilities
+    cum_probs = torch.cumsum(sorted_probs, dim=0)
+
+    # Find the index where the cumulative probability exceeds top_p
+    # This includes one additional element beyond the threshold, ensuring the sum exceeds top_p
+    cutoff_index = torch.searchsorted(cum_probs, top_p, right=True) + 1
+
+    # Filter the sorted arrays to keep only the top_p elements
+    filtered_indices = sorted_indices[:cutoff_index]
+    filtered_logprobs = sorted_logprobs[:cutoff_index]
+
+    return filtered_indices, filtered_logprobs

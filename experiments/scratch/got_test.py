@@ -14,7 +14,7 @@ from tqdm import tqdm
 from meta_evals.activations.inference import get_model_activations
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.datasets.elk.types import BinaryRow
+from meta_evals.datasets.elk.types import Row
 from meta_evals.datasets.elk.utils.filters import (
     DATASET_FILTER_FNS,
     DatasetIdFilter,
@@ -25,12 +25,12 @@ from meta_evals.datasets.elk.utils.limits import (
     SplitLimits,
     limit_groups,
 )
-from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.evals_utils.probes import eval_probe_by_question
 from meta_evals.models.loading import load_llm_oioo
 from meta_evals.models.points import get_points
 from meta_evals.models.types import LlmId
-from meta_evals.probes.collections import (
-    ALL_PROBES,
+from meta_evals.evaluations.probes.collections import (
+    ALL_LATENT_KNOWLEDGE_PROBES,
     SUPERVISED_PROBES,
     train_probe,
 )
@@ -70,7 +70,7 @@ inputs = (
                 "arc_challenge",
             ]
         ),
-        to=BinaryRow,
+        to=Row,
     )
     .filter(
         limit_groups(limits),
@@ -219,7 +219,7 @@ for llm_id in llm_ids[:1]:
         limit=None,
     )
     assert arrays_val.groups is not None
-    for probe_method in tqdm(ALL_PROBES):
+    for probe_method in tqdm(ALL_LATENT_KNOWLEDGE_PROBES):
         start = datetime.now()
         probe = train_probe(probe_method, arrays)
         duration = datetime.now() - start

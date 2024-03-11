@@ -4,15 +4,15 @@ from pydantic import BaseModel
 
 from meta_evals.datasets.elk.utils.filters import DatasetFilter
 from meta_evals.models.types import LlmId
-from meta_evals.probes.base import BaseProbe
-from meta_evals.probes.collections import ProbeMethod
+from meta_evals.evaluations.probes.base import BaseProbe
+from meta_evals.evaluations.probes.collections import EvalMethod
 
 
 @dataclass
 class TrainSpec:
     llm_id: LlmId
     dataset: DatasetFilter
-    probe_method: ProbeMethod
+    probe_method: EvalMethod
     point_name: str
     token_idx: int
 
@@ -34,7 +34,7 @@ class PipelineResultRow(BaseModel, extra="forbid"):
     llm_id: LlmId
     train_dataset: str
     eval_dataset: str
-    probe_method: ProbeMethod
+    probe_method: EvalMethod
     point_name: str
     token_idx: int
     accuracy: float

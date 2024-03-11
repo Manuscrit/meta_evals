@@ -3,7 +3,7 @@ from typing import Any, Literal
 import datasets
 
 from meta_evals.datasets.elk.types import (
-    BinaryRow,
+    Row,
     DatasetId,
     Split,
     TemplateType,
@@ -36,9 +36,7 @@ _SUBSET_TO_NAME: dict[ArcSubset, str] = {
 }
 
 
-def get_arc(
-    subset: ArcSubset, template_type: TemplateType
-) -> dict[str, BinaryRow]:
+def get_arc(subset: ArcSubset, template_type: TemplateType) -> dict[str, Row]:
     return {
         **_get_arc_split(
             subset=subset, split="train", template_type=template_type
@@ -54,7 +52,7 @@ def _get_arc_split(
     subset: ArcSubset,
     split: Split,
     template_type: TemplateType,
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     dataset_id = _DATASET_IDS[(subset, template_type)]
     template = _TEMPLATE[template_type]
     dataset: Any = datasets.load_dataset("ai2_arc", _SUBSET_TO_NAME[subset])
@@ -65,7 +63,7 @@ def _get_arc_split(
             row["choices"]["text"], row["choices"]["label"], strict=True
         ):
             format_args = dict(question=row["question"], answer=choice)
-            results[f"{dataset_id}-{group_id}-{choice_label}"] = BinaryRow(
+            results[f"{dataset_id}-{group_id}-{choice_label}"] = Row(
                 dataset_id=dataset_id,
                 split=split_train(split, seed="arc" + subset, row_id=group_id),
                 group_id=group_id,

@@ -13,17 +13,20 @@ from sklearn.decomposition import PCA
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
 from meta_evals.datasets.elk.utils.filters import DatasetFilter, DatasetIdFilter
-from meta_evals.evals.logits import eval_logits_by_question, eval_logits_by_row
-from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.evals_utils.logits import (
+    eval_logits_by_question,
+    eval_logits_by_row,
+)
+from meta_evals.evals_utils.probes import eval_probe_by_question
 from meta_evals.models.points import get_points
 from meta_evals.models.types import LlmId
-from meta_evals.probes.base import BaseProbe
-from meta_evals.probes.collections import (
+from meta_evals.evaluations.probes.base import BaseProbe
+from meta_evals.evaluations.probes.collections import (
     SUPERVISED_PROBES,
-    ProbeMethod,
+    EvalMethod,
     train_probe,
 )
-from meta_evals.probes.difference_in_means import train_dim_probe
+from meta_evals.evaluations.probes.difference_in_means import train_dim_probe
 
 LLM_IDS: list[LlmId] = [
     # "Llama-2-7b-hf",
@@ -84,7 +87,7 @@ Pipeline for training and evaluating probes.
 class Spec:
     llm_id: LlmId
     dataset: DatasetFilter
-    probe_method: ProbeMethod
+    probe_method: EvalMethod
     point_name: str
 
 
@@ -97,7 +100,7 @@ class EvalResult:
 class PipelineResultRow(BaseModel, extra="forbid"):
     llm_id: LlmId
     dataset: str
-    probe_method: ProbeMethod
+    probe_method: EvalMethod
     point_name: str
     accuracy: float
     accuracy_n: int
@@ -109,7 +112,7 @@ token_idxs: list[int] = [-1]
 def run_probe_pipeline(
     llm_ids: list[LlmId],
     datasets: Sequence[DatasetFilter],
-    probe_methods: list[ProbeMethod],
+    probe_methods: list[EvalMethod],
 ) -> list[PipelineResultRow]:
     train_specs = mcontext.create(
         {

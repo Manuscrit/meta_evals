@@ -25,7 +25,7 @@ from jaxtyping import Bool, Float
 from overrides import override
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
-from meta_evals.probes.base import BaseProbe, PredictResult
+from meta_evals.evaluations.probes.base import BaseProbe, PredictResult
 
 
 @dataclass

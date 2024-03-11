@@ -23,8 +23,8 @@ import numpy as np
 from jaxtyping import Float, Int64
 from sklearn.decomposition import PCA
 
-from meta_evals.probes.base import DotProductProbe
-from meta_evals.probes.normalization import normalize_by_group
+from meta_evals.evaluations.probes.base import DotProductProbe
+from meta_evals.evaluations.probes.normalization import normalize_by_group
 
 
 def train_pca_probe(

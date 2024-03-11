@@ -3,7 +3,7 @@ from importlib import resources
 import jsonlines
 
 from meta_evals.datasets import data
-from meta_evals.datasets.elk.types import BinaryRow
+from meta_evals.datasets.elk.types import Row
 from meta_evals.datasets.utils.shuffles import deterministic_shuffle
 from meta_evals.datasets.utils.splits import split_to_all
 
@@ -15,7 +15,7 @@ _TEMPLATE = (
 )
 
 
-def get_truthful_model_written() -> dict[str, BinaryRow]:
+def get_truthful_model_written() -> dict[str, Row]:
     truthful_json = resources.files(data) / "truthful.jsonl"
     with jsonlines.open(str(truthful_json)) as reader:
         results = {}
@@ -27,7 +27,7 @@ def get_truthful_model_written() -> dict[str, BinaryRow]:
                     statement=row["value"]["statement"], answer=answer_str
                 )
                 text = _TEMPLATE.format(**format_args)
-                results[f"{key}-{answer}"] = BinaryRow(
+                results[f"{key}-{answer}"] = Row(
                     dataset_id=_DATASET_ID,
                     group_id=row["key"],
                     split=split_to_all(_DATASET_ID, row["key"]),

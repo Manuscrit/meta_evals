@@ -3,7 +3,7 @@ from typing import Literal, cast, get_args
 
 from overrides import override
 
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.elk.utils.filters import (
     DatasetCollectionFilter,
     DatasetFilter,
@@ -83,7 +83,7 @@ class DatasetCollectionIdFilter(DatasetFilter):
 
 def get_dataset_collection(
     dataset_collection_id: DatasetCollectionId,
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     return get_datasets(resolve_dataset_ids(dataset_collection_id))
 
 

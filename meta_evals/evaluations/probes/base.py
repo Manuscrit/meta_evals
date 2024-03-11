@@ -7,10 +7,12 @@ from typing_extensions import override
 
 
 class BaseProbe(ABC):
+    is_flippable: bool = True
+
     @abstractmethod
     def predict(
         self,
-        activations: Float[np.ndarray, "n d"],  # noqa: F722
+        activations: Float[np.ndarray, "n d"],
     ) -> "PredictResult":
         """
         Predicts the probability of the label being true for each row.

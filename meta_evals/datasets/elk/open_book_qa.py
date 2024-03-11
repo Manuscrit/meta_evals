@@ -3,7 +3,7 @@ from typing import Any
 import datasets
 
 from meta_evals.datasets.elk.types import (
-    BinaryRow,
+    Row,
     DatasetId,
     Split,
     TemplateType,
@@ -26,7 +26,7 @@ _TEMPLATES: dict[TemplateType, str] = {
 }
 
 
-def get_open_book_qa(template_type: TemplateType) -> dict[str, BinaryRow]:
+def get_open_book_qa(template_type: TemplateType) -> dict[str, Row]:
     return {
         **_get_open_book_qa_split("train", template_type=template_type),
         **_get_open_book_qa_split("validation", template_type=template_type),
@@ -35,7 +35,7 @@ def get_open_book_qa(template_type: TemplateType) -> dict[str, BinaryRow]:
 
 def _get_open_book_qa_split(
     split: Split, template_type: TemplateType
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     dataset_id = _DATASET_IDS[template_type]
     template = _TEMPLATES[template_type]
     dataset: Any = datasets.load_dataset("openbookqa")
@@ -48,7 +48,7 @@ def _get_open_book_qa_split(
             format_args = dict(
                 question_stem=row["question_stem"], choice=choice
             )
-            results[f"{dataset_id}-{group_id}-{choice_label}"] = BinaryRow(
+            results[f"{dataset_id}-{group_id}-{choice_label}"] = Row(
                 dataset_id=dataset_id,
                 split=split_train(split, seed="open_book_qa", row_id=group_id),
                 group_id=group_id,

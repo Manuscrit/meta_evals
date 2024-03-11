@@ -2,7 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable
 
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId, Split
+from meta_evals.datasets.elk.types import Row, DatasetId, Split
 
 
 @dataclass
@@ -40,12 +40,12 @@ class _GroupCount:
         return len(self.groups) + self.num_nones
 
 
-def limit_groups(limits: Limits) -> Callable[[str, BinaryRow], bool]:
+def limit_groups(limits: Limits) -> Callable[[str, Row], bool]:
     group_counts: dict[_DatasetAndSplit, _GroupCount] = defaultdict(
         lambda: _GroupCount(set(), 0)
     )
 
-    def fn(_, row: BinaryRow) -> bool:
+    def fn(_, row: Row) -> bool:
         dataset_and_split = _DatasetAndSplit(
             dataset_id=row.dataset_id,
             split=row.split,

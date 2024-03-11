@@ -2,7 +2,7 @@ import numpy as np
 import sklearn.metrics
 from jaxtyping import Bool, Float, Int64
 
-from meta_evals.evals.types import QuestionsEvalResult, RowsEvalResult
+from meta_evals.evals_utils.types import QuestionsEvalResult, RowsEvalResult
 
 
 def eval_logits_by_question(

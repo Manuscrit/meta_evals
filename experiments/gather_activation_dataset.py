@@ -12,12 +12,22 @@ from meta_evals.utils.constants import (
     DEBUG,
     MODEL_FOR_DEBUGGING,
     MODEL_FOR_REAL,
-    get_collection_ids,
+    get_ds_collection_ids,
+    FASTER_RUN,
+    DEBUG_VERSION,
+    get_number_sample_debugging,
+    inital_layer,
+    layer_skip,
 )
-from meta_evals.utils.utils import check_for_mps
-
+from meta_evals.utils.utils import (
+    check_for_mps,
+    get_torch_device,
+    get_dataset_ids,
+)
 
 """
+This memory usage is neglecting the size of the next_token_logprobs.
+
 DEBUG
 ~6 datasets
  * 2 layers
@@ -42,37 +52,45 @@ VANILLA
 
 if __name__ == "__main__":
 
-    collections: list[DatasetCollectionId] = get_collection_ids()
+    dataset_ids = get_dataset_ids()
     create_activations_dataset(
-        tag="debug_v0.2" if DEBUG else f"datasets_{datetime.now().isoformat()}",
+        tag=f"debug_{DEBUG_VERSION}"
+        if DEBUG
+        else f"datasets_{datetime.now().isoformat()}",
+        # else "datasets_2024-03-05T08:37:13.825450",
+        # else "datasets_2024-03-05T10:23:50.961381",
         llm_ids=[MODEL_FOR_DEBUGGING if DEBUG else MODEL_FOR_REAL],
-        dataset_ids=[
-            *[
-                dataset_id
-                for collection in collections
-                for dataset_id in resolve_dataset_ids(collection)
-            ],
-            "truthful_qa",
-        ],
+        dataset_ids=dataset_ids,
         group_limits=Limits(
             default=SplitLimits(
-                train=100 if DEBUG else 400,
-                train_hparams=100 if DEBUG else 2000,
-                validation=100 if DEBUG else 2000,
+                train=get_number_sample_debugging() if DEBUG else 400,
+                train_hparams=get_number_sample_debugging()
+                if DEBUG
+                else (400 if FASTER_RUN else 2000),
+                validation=get_number_sample_debugging()
+                if DEBUG
+                else (400 if FASTER_RUN else 2000),
             ),
             by_dataset={
                 "truthful_qa": SplitLimits(
                     train=0,
                     train_hparams=0,
-                    validation=100 if DEBUG else 2000,
-                )
+                    validation=get_number_sample_debugging()
+                    if DEBUG
+                    else (400 if FASTER_RUN else 2000),
+                ),
+                "persona.desire-for-acquiring-power": SplitLimits(
+                    train=0,
+                    train_hparams=0,
+                    validation=get_number_sample_debugging()
+                    if DEBUG
+                    else (400 if FASTER_RUN else 2000),
+                ),
             },
         ),
         num_tokens_from_end=1,
-        device=torch.device("mps") if check_for_mps() else torch.device("cuda"),
-        # layers_start=13,
-        layers_start=1 if DEBUG else 13,
+        device=get_torch_device(),
+        layers_start=inital_layer(),
         layers_end=None,
-        # layers_skip=2,
-        layers_skip=4,
+        layers_skip=layer_skip(),
     )

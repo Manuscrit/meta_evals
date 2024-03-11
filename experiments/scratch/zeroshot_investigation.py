@@ -10,7 +10,7 @@ from transformers import AutoTokenizer
 from meta_evals.activations.inference import get_model_activations
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.datasets.elk.types import BinaryRow
+from meta_evals.datasets.elk.types import Row
 from meta_evals.datasets.elk.utils.filters import (
     DATASET_FILTER_FNS,
     DatasetIdFilter,
@@ -21,7 +21,7 @@ from meta_evals.datasets.elk.utils.limits import (
     SplitLimits,
     limit_groups,
 )
-from meta_evals.evals.logits import eval_logits_by_question
+from meta_evals.evals_utils.logits import eval_logits_by_question
 from meta_evals.models.loading import load_llm_oioo
 
 assert load_dotenv(".env")

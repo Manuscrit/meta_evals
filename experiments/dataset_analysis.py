@@ -6,14 +6,14 @@ import plotly.express as px
 from mppr import MContext, MDict
 from pydantic import BaseModel
 
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.elk.utils.collections import resolve_dataset_ids
 from meta_evals.datasets.elk.utils.fns import get_dataset
 
 
 # %%
 class Dataset(BaseModel, extra="forbid"):
-    rows: dict[str, BinaryRow]
+    rows: dict[str, Row]
 
 
 mcontext = MContext(Path("../output/dataset_analysis"))

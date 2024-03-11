@@ -16,16 +16,19 @@ from sklearn.metrics import roc_auc_score
 from meta_evals.activations.inference import get_model_activations
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.elk.utils.collections import get_datasets
 from meta_evals.datasets.elk.utils.limits import limit_dataset_and_split_fn
-from meta_evals.evals.logits import eval_logits_by_question
-from meta_evals.evals.probes import eval_probe_by_question, eval_probe_by_row
+from meta_evals.evals_utils.logits import eval_logits_by_question
+from meta_evals.evals_utils.probes import (
+    eval_probe_by_question,
+    eval_probe_by_row,
+)
 from meta_evals.models.loading import load_llm_oioo
 from meta_evals.models.points import get_points
 from meta_evals.models.types import LlmId
-from meta_evals.probes.collections import ProbeMethod, train_probe
-from meta_evals.probes.logistic_regression import train_lr_probe
+from meta_evals.evaluations.probes.collections import EvalMethod, train_probe
+from meta_evals.evaluations.probes.logistic_regression import train_lr_probe
 
 # %%
 mcontext = MContext(Path("../output/probe_test"))
@@ -43,7 +46,7 @@ dataset = (
                 # "open_book_qa",
             ]
         ),
-        to=BinaryRow,
+        to=Row,
     )
     # .filter(lambda _, row: row.dataset_id == "open_book_qa")
     .filter(
@@ -61,7 +64,7 @@ print(set(d.dataset_id for d in dataset.get()))
 # %%
 @dataclass
 class InputRow:
-    row: BinaryRow
+    row: Row
     llm_id: LlmId
     text: str
 
@@ -121,7 +124,7 @@ arrays_dataset = ActivationArrayDataset(arrays_dataset.get())
 def train_and_eval(
     llm_id: LlmId,
     point: str,
-    probe_method: ProbeMethod,
+    probe_method: EvalMethod,
     dataset_id: DatasetId,
 ):
     arrays = arrays_dataset.get(
@@ -182,7 +185,7 @@ def eval_logprobs(llm_id: LlmId, dataset_id: DatasetId):
     )
 
 
-probe_methods: list[ProbeMethod] = ["mmp", "lr"]
+probe_methods: list[EvalMethod] = ["mmp", "lr"]
 dataset_ids: list[DatasetId] = ["arc_easy", "arc_easy/qna"]
 df = (
     mcontext.create(
@@ -290,7 +293,7 @@ for model in llm_ids:
         eval_logits_by_question(
             LabeledGroupedLogits(
                 logits=arrays.labeled_grouped.activations,
-                labels=arrays.labeled_grouped.labels,
+                labels=arrays.labeled_grouped.labels_possible_answers,
                 groups=arrays.labeled_grouped.groups,
             )
         ).model_dump()
@@ -491,7 +494,7 @@ probe_arrays_val = prepare_activations_for_probes(
     ]
 )
 
-probe_methods: list[ProbeMethod] = ["lat", "mmp", "lr"]
+probe_methods: list[EvalMethod] = ["lat", "mmp", "lr"]
 df_eval = pd.DataFrame(
     [
         dict(

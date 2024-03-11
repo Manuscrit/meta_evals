@@ -15,7 +15,7 @@ Regularization: None.
 import numpy as np
 from jaxtyping import Bool, Float
 
-from meta_evals.probes.base import DotProductProbe
+from meta_evals.evaluations.probes.base import DotProductProbe
 
 
 def train_dim_probe(

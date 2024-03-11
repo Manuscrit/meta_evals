@@ -15,11 +15,15 @@ from meta_evals.activations.probe_preparations import (
 )
 from meta_evals.datasets.activations.types import ActivationResultRow
 from meta_evals.datasets.elk.types import DatasetId, Split
-from meta_evals.evals.probes import eval_probe_by_question
+from meta_evals.evals_utils.probes import eval_probe_by_question
 from meta_evals.hooks.grab import grab
 from meta_evals.models.llms import pythia
-from meta_evals.probes.base import BaseGroupedProbe, BaseProbe, PredictResult
-from meta_evals.probes.collections import ProbeMethod, train_probe
+from meta_evals.evaluations.probes.base import (
+    BaseGroupedProbe,
+    BaseProbe,
+    PredictResult,
+)
+from meta_evals.evaluations.probes.collections import EvalMethod, train_probe
 
 # %%
 # # so we don't have to re-load massive file
@@ -123,13 +127,13 @@ def get_group_accuracy(
             group_labels_one = np.zeros_like(group_labels)
             group_labels_one[group_labels.tolist().index(True)] = True
             group_labels = group_labels_one
-        assert arrays.labels[arrays.groups == group].sum() == 1, arrays.labels[
-            arrays.groups == group
-        ]
+        assert (
+            arrays.labels_possible_answers[arrays.groups == group].sum() == 1
+        ), arrays.labels_possible_answers[arrays.groups == group]
         accuracy.append(
             np.all(
                 predict_result.labels[arrays.groups == group]
-                == arrays.labels[arrays.groups == group]
+                == arrays.labels_possible_answers[arrays.groups == group]
             )
         )
     return sum(accuracy) / len(accuracy)
@@ -139,7 +143,7 @@ def get_group_accuracy(
 class SweepSpec:
     layer: str
     token: int
-    probe_method: ProbeMethod
+    probe_method: EvalMethod
     dataset: DatasetId
     num_samples: int
 
@@ -206,7 +210,7 @@ def train_and_eval_probe(spec: SweepSpec) -> dict:
     )
 
 
-probe_methods: list[ProbeMethod] = ["lr", "lr-grouped", "lat"]
+probe_methods: list[EvalMethod] = ["lr", "lr-grouped", "lat"]
 specs = mcontext.create(
     {
         f"{layer}-{token}-{probe_method}-{dataset_id}-{num_samples}": SweepSpec(

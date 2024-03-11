@@ -3,7 +3,7 @@ from typing import Any
 import datasets
 
 from meta_evals.datasets.elk.types import (
-    BinaryRow,
+    Row,
     DatasetId,
     Split,
     TemplateType,
@@ -32,16 +32,14 @@ _TEMPLATES: dict[TemplateType, str] = {
 _ANSWER_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
 
 
-def get_race(template_id: TemplateType) -> dict[str, BinaryRow]:
+def get_race(template_id: TemplateType) -> dict[str, Row]:
     return {
         **_get_race_split("train", template_id=template_id),
         **_get_race_split("validation", template_id=template_id),
     }
 
 
-def _get_race_split(
-    split: Split, template_id: TemplateType
-) -> dict[str, BinaryRow]:
+def _get_race_split(split: Split, template_id: TemplateType) -> dict[str, Row]:
     dataset_id = _DATASET_IDS[template_id]
     template = _TEMPLATES[template_id]
     dataset: Any = datasets.load_dataset("race", "all")
@@ -54,7 +52,7 @@ def _get_race_split(
             format_args = dict(
                 article=row["article"], question=row["question"], answer=option
             )
-            results[f"{dataset_id}-{group_id}-{option_idx}"] = BinaryRow(
+            results[f"{dataset_id}-{group_id}-{option_idx}"] = Row(
                 dataset_id=dataset_id,
                 split=split_train(split, seed="race", row_id=group_id),
                 group_id=group_id,

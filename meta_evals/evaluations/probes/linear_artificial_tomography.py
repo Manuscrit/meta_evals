@@ -20,8 +20,8 @@ from jaxtyping import Float, Int64
 from sklearn.decomposition import PCA
 from typing_extensions import override
 
-from meta_evals.probes.base import DotProductProbe, PredictResult
-from meta_evals.probes.normalization import normalize_by_group
+from meta_evals.evaluations.probes.base import DotProductProbe, PredictResult
+from meta_evals.evaluations.probes.normalization import normalize_by_group
 
 
 @dataclass

@@ -1,12 +1,19 @@
+import os
 from typing import Any
 
 import torch
+from dotenv import load_dotenv
+from huggingface_hub import login
 
 from meta_evals.models.llms import Llm, LlmId, get_llm
+from meta_evals.utils.constants import USE_MPS
 from meta_evals.utils.utils import check_for_mps
 
 _loaded_llm_id: LlmId | None = None
 _loaded_llm: Llm[Any, Any] | None = None
+
+assert load_dotenv("../.env")
+login(token=os.environ.get("HF_TOKEN", ""), add_to_git_credential=True)
 
 
 def load_llm_oioo(
@@ -24,7 +31,7 @@ def load_llm_oioo(
         if _loaded_llm is not None:
             _loaded_llm.model = _loaded_llm.model.cpu()
             del _loaded_llm
-            if check_for_mps():
+            if check_for_mps() and USE_MPS:
                 torch.mps.empty_cache()
             else:
                 torch.cuda.empty_cache()

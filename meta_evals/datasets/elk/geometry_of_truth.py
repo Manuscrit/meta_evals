@@ -2,7 +2,7 @@ from typing import Literal, cast
 
 import pandas as pd
 
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.utils.shuffles import deterministic_shuffle
 from meta_evals.datasets.utils.splits import split_to_all
 
@@ -17,7 +17,7 @@ Subset = Literal[
 _URL = "https://raw.githubusercontent.com/saprmarks/geometry-of-truth/91b2232/datasets"
 
 
-def get_geometry_of_truth(subset: Subset) -> dict[str, BinaryRow]:
+def get_geometry_of_truth(subset: Subset) -> dict[str, Row]:
     if subset == "cities":
         return _get_paired(
             dataset_id="got_cities",
@@ -57,7 +57,7 @@ def _get_paired(
     csv_name_pos: str,
     csv_name_neg: str,
     expected_identical_labels: list[str],
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     result = {}
     csv_pos = _get_csv(csv_name_pos)
     csv_neg = _get_csv(csv_name_neg)
@@ -73,7 +73,7 @@ def _get_paired(
         )
         assert row_pos["label"] != row_neg["label"], (row_pos, row_neg)
         for answer_type, row in [("pos", row_pos), ("neg", row_neg)]:
-            result[f"{dataset_id}-{index}-{answer_type}"] = BinaryRow(
+            result[f"{dataset_id}-{index}-{answer_type}"] = Row(
                 dataset_id=dataset_id,
                 group_id=str(index),
                 split=split_to_all(dataset_id, str(index)),
@@ -88,14 +88,14 @@ def _get_paired(
 def _get_unpaired(
     dataset_id: DatasetId,
     csv_name: str,
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     result = {}
     df = _get_csv(csv_name)
     for index, row in deterministic_shuffle(
         df.iterrows(), lambda row: str(row[0])
     ):
         assert isinstance(index, int)
-        result[f"{dataset_id}-{index}"] = BinaryRow(
+        result[f"{dataset_id}-{index}"] = Row(
             dataset_id=dataset_id,
             split=split_to_all(dataset_id, str(index)),
             text=cast(str, row["statement"]),

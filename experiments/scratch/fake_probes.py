@@ -6,16 +6,18 @@ import plotly.graph_objects as go
 from jaxtyping import Float
 from tqdm import tqdm
 
-from meta_evals.activations.probe_preparations import ActivationArrays
-from meta_evals.probes.base import DotProductProbe
-from meta_evals.probes.collections import ProbeMethod, train_probe
-from meta_evals.probes.contrast_consistent_search import (
+from meta_evals.activations.probe_preparations import EvalInputArrays
+from meta_evals.evaluations.probes.base import DotProductProbe
+from meta_evals.evaluations.probes.collections import EvalMethod, train_probe
+from meta_evals.evaluations.probes.contrast_consistent_search import (
     CcsProbe,
     CcsTrainingConfig,
     train_ccs_probe,
 )
-from meta_evals.probes.linear_artificial_tomography import train_lat_probe
-from meta_evals.probes.logistic_regression import (
+from meta_evals.evaluations.probes.linear_artificial_tomography import (
+    train_lat_probe,
+)
+from meta_evals.evaluations.probes.logistic_regression import (
     LogisticRegressionProbe,
     train_lr_probe,
 )
@@ -46,7 +48,7 @@ df_2["pair_id"] = np.array(range(num_samples))
 df = pd.concat([df_1, df_2])
 df["activations"] = df.apply(lambda row: np.array([row["x"], row["y"]]), axis=1)
 
-arrays = ActivationArrays(
+arrays = EvalInputArrays(
     activations=np.stack(df["activations"]),  # type: ignore
     labels=df["label"].to_numpy(),
     groups=df["pair_id"].to_numpy(),
@@ -54,7 +56,7 @@ arrays = ActivationArrays(
 )
 
 # %%
-probe_methods: list[ProbeMethod] = [
+probe_methods: list[EvalMethod] = [
     "ccs",
     "lat",
     "dim",

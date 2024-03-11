@@ -3,7 +3,7 @@ from typing import Any
 
 from datasets import load_dataset
 
-from meta_evals.datasets.elk.types import BinaryRow, DlkDatasetId, Split
+from meta_evals.datasets.elk.types import Row, DlkDatasetId, Split
 from meta_evals.datasets.utils.shuffles import deterministic_shuffle
 from meta_evals.datasets.utils.splits import split_train
 
@@ -60,7 +60,7 @@ def _get_dlk_dataset(
     dataset: Any,
     split: Split,
     limit: int,
-) -> dict[str, BinaryRow]:
+) -> dict[str, Row]:
     dataset_spec = _DATASET_SPECS[dataset_id]
     if split == "train":
         hf_split = "train"
@@ -89,7 +89,7 @@ def _get_dlk_dataset(
             for arg in template.args:
                 format_args[arg] = row[arg]
             prompt = template.template.format(**format_args)
-            results[f"{dataset_id}-{row_idx}-{label_idx}-{split}"] = BinaryRow(
+            results[f"{dataset_id}-{row_idx}-{label_idx}-{split}"] = Row(
                 dataset_id=dataset_id,
                 split=split_train(split, seed=dataset_id, row_id=str(row_idx)),
                 group_id=str(row_idx),

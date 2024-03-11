@@ -1,4 +1,4 @@
-from typing import Literal, get_args
+from typing import Literal, get_args, List
 
 from pydantic import BaseModel
 
@@ -33,7 +33,10 @@ DatasetId = Literal[
     "arc_challenge/simple",
     "arc_easy/simple",
     "common_sense_qa/simple",
+    "persona",
+    "persona.desire-for-acquiring-power",
 ]
+
 
 DlkDatasetId = Literal[
     "imdb",
@@ -62,12 +65,12 @@ GroupedDatasetId = Literal[
 TemplateType = Literal["repe", "dlk", "simple"]
 
 
-class BinaryRow(BaseModel, extra="forbid"):
+class Row(BaseModel, extra="forbid"):
     dataset_id: DatasetId
     split: Split
-    text: str
-    label: bool
-    format_args: dict[str, str]
+    text: str | None = None
+    label: bool | None = None
+    format_args: dict[str, str] | None = None
     group_id: str | None = None
     """
     Rows are grouped, for example by question, in order to allow for probes that take
@@ -80,6 +83,9 @@ class BinaryRow(BaseModel, extra="forbid"):
     If not set, the prompt template doesn't include any consistent answer templates
     (e.g. it's just question-answer).
     """
+    # To support multiple choice questions
+    answers_possible: List[str] | None = None
+    labels_possible_answers: List[bool] | None = None
 
 
 def is_dataset_grouped(dataset_id: DatasetId) -> bool:

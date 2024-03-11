@@ -10,10 +10,10 @@ from sklearn.decomposition import PCA
 from meta_evals.activations.inference import get_model_activations
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.datasets.elk.types import BinaryRow, DatasetId
+from meta_evals.datasets.elk.types import Row, DatasetId
 from meta_evals.datasets.elk.utils.collections import get_datasets
 from meta_evals.datasets.elk.utils.limits import limit_dataset_and_split_fn
-from meta_evals.evals.logits import eval_logits_by_question
+from meta_evals.evals_utils.logits import eval_logits_by_question
 from meta_evals.models.loading import load_llm_oioo
 from meta_evals.models.types import LlmId
 
@@ -39,7 +39,7 @@ mcontext = MContext(Path("../output/comparison"))
 # %%
 @dataclass
 class InputSpec:
-    row: BinaryRow
+    row: Row
     llm_id: LlmId
 
 
@@ -51,7 +51,7 @@ input_specs = (
     mcontext.create_cached(
         "dataset",
         lambda: get_datasets(["arc_easy"]),
-        to=BinaryRow,
+        to=Row,
     )
     .filter(
         limit_dataset_and_split_fn(train_limit=800, validation_limit=200),
@@ -157,5 +157,5 @@ component_values = pca.fit_transform(arrays.activations)
 sns.scatterplot(
     x=component_values[:, 0],
     y=component_values[:, 1],
-    hue=arrays.labels,
+    hue=arrays.labels_possible_answers,
 )

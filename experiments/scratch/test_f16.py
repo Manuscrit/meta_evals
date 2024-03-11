@@ -7,9 +7,11 @@ from mppr import MContext
 
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.activations.types import ActivationResultRow
-from meta_evals.evals.logits import eval_logits_by_question
-from meta_evals.evals.probes import eval_probe_by_question
-from meta_evals.probes.logistic_regression import train_grouped_lr_probe
+from meta_evals.evals_utils.logits import eval_logits_by_question
+from meta_evals.evals_utils.probes import eval_probe_by_question
+from meta_evals.evaluations.probes.logistic_regression import (
+    train_grouped_lr_probe,
+)
 
 # %%
 mcontext = MContext(Path("../output/comparison"))

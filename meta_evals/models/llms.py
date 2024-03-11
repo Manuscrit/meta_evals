@@ -23,6 +23,7 @@ from meta_evals.models.types import (
     PythiaDpoId,
     PythiaId,
 )
+from meta_evals.utils.constants import USE_MPS
 from meta_evals.utils.utils import check_for_mps
 
 _MISTRAL_HF_IDS: dict[MistralId, str] = {
@@ -81,6 +82,11 @@ def get_llm(
     device: torch.device,
     use_half_precision: bool,
 ) -> Llm[Any, Any]:
+
+    if check_for_mps() and USE_MPS:
+        assert device.type == "mps"
+        assert not use_half_precision
+
     if llm_id in get_args(PythiaId):
         return pythia(cast(PythiaId, llm_id), device, use_half_precision)
     elif llm_id in get_args(Gpt2Id):
@@ -119,9 +125,10 @@ def pythia(
     device: torch.device,
     use_half_precision: bool,
 ) -> Llm[GPTNeoXForCausalLM, PreTrainedTokenizerFast]:
-    dtype = torch.float16 if use_half_precision else torch.float32
-    if check_for_mps():
+    if check_for_mps() and USE_MPS:
         assert device.type == "mps"
+        use_half_precision = False
+    dtype = torch.float16 if use_half_precision else torch.float32
     model = GPTNeoXForCausalLM.from_pretrained(
         f"EleutherAI/{pythia_id}",
         device_map=device,
@@ -143,6 +150,17 @@ def pythia_dpo(
     use_half_precision: bool,
 ) -> Llm[GPTNeoXForCausalLM, PreTrainedTokenizerFast]:
     dtype = torch.float16 if use_half_precision else torch.float32
+    model_id, pythia_id = get_pythia_dpo_ids(pythia_dpo_id)
+    model = GPTNeoXForCausalLM.from_pretrained(
+        model_id, device_map=device, torch_dtype=dtype
+    )
+    assert isinstance(model, GPTNeoXForCausalLM)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    assert isinstance(tokenizer, PreTrainedTokenizerFast)
+    return Llm(model, tokenizer, points.pythia(pythia_id))
+
+
+def get_pythia_dpo_ids(pythia_dpo_id) -> list[PythiaDpoId]:
     if pythia_dpo_id == "pythia-dpo-1b":
         model_id = "Leogrin/eleuther-pythia1b-hh-dpo"
         pythia_id = "pythia-1b"
@@ -157,13 +175,7 @@ def pythia_dpo(
         pythia_id = "pythia-1.4b"
     else:
         raise ValueError(f"Unknown Pythia DPO ID: {pythia_dpo_id}")
-    model = GPTNeoXForCausalLM.from_pretrained(
-        model_id, device_map=device, torch_dtype=dtype
-    )
-    assert isinstance(model, GPTNeoXForCausalLM)
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    assert isinstance(tokenizer, PreTrainedTokenizerFast)
-    return Llm(model, tokenizer, points.pythia(pythia_id))
+    return model_id, pythia_id
 
 
 def llama2(
@@ -222,3 +234,33 @@ def gemma(
         tokenizer,
         points.gemma(gemma_id),
     )
+
+
+TOKENIZER_LOADED: dict[LlmId, PreTrainedTokenizerFast] = {}
+
+
+def get_llm_tokenizer(
+    llm_id: LlmId,
+) -> PreTrainedTokenizerFast:
+    if llm_id in TOKENIZER_LOADED:
+        return TOKENIZER_LOADED[llm_id]
+
+    if llm_id in get_args(PythiaId):
+        tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/{llm_id}")
+    elif llm_id in get_args(Gpt2Id):
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    elif llm_id in get_args(Llama2Id):
+        tokenizer = AutoTokenizer.from_pretrained(f"meta-llama/{llm_id}")
+    elif llm_id in get_args(PythiaDpoId):
+        model_id, pythia_id = get_pythia_dpo_ids(llm_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+    elif llm_id in get_args(MistralId):
+        tokenizer = AutoTokenizer.from_pretrained(_MISTRAL_HF_IDS[llm_id])
+    elif llm_id in get_args(GemmaId):
+        tokenizer = AutoTokenizer.from_pretrained(f"google/{llm_id}")
+    else:
+        raise ValueError(f"Unknown LLM ID: {llm_id}")
+    assert isinstance(tokenizer, PreTrainedTokenizerFast)
+
+    TOKENIZER_LOADED[llm_id] = tokenizer
+    return tokenizer

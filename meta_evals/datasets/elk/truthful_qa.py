@@ -2,7 +2,7 @@ from typing import Any
 
 import datasets
 
-from meta_evals.datasets.elk.types import BinaryRow
+from meta_evals.datasets.elk.types import Row
 from meta_evals.datasets.utils.shuffles import deterministic_shuffle
 from meta_evals.datasets.utils.splits import split_validation
 
@@ -16,7 +16,7 @@ _TEMPLATE = (
 )
 
 
-def get_truthful_qa() -> dict[str, BinaryRow]:
+def get_truthful_qa() -> dict[str, Row]:
     dataset: Any = datasets.load_dataset("truthful_qa", "multiple_choice")
     results = {}
     for group_id, row in deterministic_shuffle(
@@ -29,7 +29,7 @@ def get_truthful_qa() -> dict[str, BinaryRow]:
             )
         ):
             format_args = dict(question=row["question"], answer=answer)
-            results[f"{_DATASET_ID}-{group_id}-{answer_idx}"] = BinaryRow(
+            results[f"{_DATASET_ID}-{group_id}-{answer_idx}"] = Row(
                 dataset_id=_DATASET_ID,
                 split=split_validation(seed=_DATASET_ID, row_id=str(group_id)),
                 group_id=str(group_id),

@@ -25,7 +25,11 @@ from jaxtyping import Bool, Float, Int64
 from sklearn.linear_model import LogisticRegression
 from typing_extensions import override
 
-from meta_evals.probes.base import BaseGroupedProbe, BaseProbe, PredictResult
+from meta_evals.evaluations.probes.base import (
+    BaseGroupedProbe,
+    BaseProbe,
+    PredictResult,
+)
 
 
 @dataclass
