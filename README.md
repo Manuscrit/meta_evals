@@ -13,6 +13,14 @@ pip install -e .
 poetry install 
 ```
 
+
+Also need to install Anthropic's model written evals
+```bash
+# Outside of the meta_evals directory
+git clone git@github.com:anthropics/evals.git
+# Then change the constant PERSONA_REPO in meta_evals/meta_evals/utils/constants.py to the path of the model-written evals directory
+```
+
 ## Reproducing experiments
 
 ### How well do truth probes generalise?
