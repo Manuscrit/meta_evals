@@ -75,6 +75,9 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
         output_path,
     ) = load_activation_dataset(activation_ds_paths)
 
+    output_dir = output_path / STAGE_VERSION
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     assert len(dataset_ids) > 0
 
     df = compute_metrics(
@@ -114,7 +117,10 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
     #     dataset_ids,
     #     df,
     # )
-    sanity_check_results(points, token_idxs, output_path, dataset, mcontext, df)
+    if not DEBUG:
+        sanity_check_results(
+            points, token_idxs, output_path, dataset, mcontext, df
+        )
 
 
 def load_activation_dataset(activation_ds_paths: list[str] = None):
@@ -471,7 +477,7 @@ def plot_cumulative_distribution_function(
     )
     fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_r0_{x}_by_layer.png", scale=3
+        output_path / f"{STAGE_VERSION}/r0_{x}_by_layer.png", scale=3
     )
     plt.close()
 
@@ -535,7 +541,7 @@ def examine_probe(
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_r1a_by_algorithms.png", scale=3
+        output_path / f"{STAGE_VERSION}/r1a_by_algorithms.png", scale=3
     )
     plt.close()
 
@@ -562,7 +568,7 @@ def examine_probe(
         height=800,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / f"{STAGE_VERSION}_r1b_by_train.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}/r1b_by_train.png", scale=3)
     plt.close()
 
     df_best_layer = (
@@ -588,7 +594,7 @@ def examine_probe(
         height=600,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / f"{STAGE_VERSION}_r1c_by_layer.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}/r1c_by_layer.png", scale=3)
     plt.close()
 
 
@@ -610,7 +616,7 @@ def plot_algo_generalization_meta_eval(df, output_path, algorithm_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_algo_generalization.png", scale=3
+        output_path / f"{STAGE_VERSION}/algo_generalization.png", scale=3
     )
     plt.close()
 
@@ -634,7 +640,7 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
         text_auto=".0%",  # type: ignore
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / f"{STAGE_VERSION}_algo_bias_all.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}/algo_bias_all.png", scale=3)
     plt.close()
 
     id_vars = ["algorithm", "supervised", "grouped"]
@@ -655,7 +661,7 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_algo_bias_train.png", scale=3
+        output_path / f"{STAGE_VERSION}/algo_bias_train.png", scale=3
     )
     plt.close()
 
@@ -677,7 +683,7 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_algo_bias_test.png", scale=3
+        output_path / f"{STAGE_VERSION}/algo_bias_test.png", scale=3
     )
     plt.close()
 
@@ -699,7 +705,7 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_algo_generalization_matrix_acc.png",
+        output_path / f"{STAGE_VERSION}/algo_generalization_matrix_acc.png",
         scale=3,
     )
     plt.close()
@@ -722,7 +728,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_datasets_generalization.png", scale=3
+        output_path / f"{STAGE_VERSION}/datasets_generalization.png", scale=3
     )
     plt.close()
 
@@ -750,7 +756,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_datasets_generalization_matrix.png",
+        output_path / f"{STAGE_VERSION}/datasets_generalization_matrix.png",
         scale=3,
     )
     plt.close()
@@ -773,7 +779,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_datasets_generalization_matrix_acc.png",
+        output_path / f"{STAGE_VERSION}/datasets_generalization_matrix_acc.png",
         scale=3,
     )
     plt.close()
@@ -819,7 +825,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     fig.update_traces(textposition="bottom center")
     fig.write_image(
         output_path
-        / f"{STAGE_VERSION}_datasets_generalization_to_and_from.png",
+        / f"{STAGE_VERSION}/datasets_generalization_to_and_from.png",
         scale=3,
     )
     plt.close()
@@ -858,7 +864,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     #     rotation=90,
     # )
     # fig.savefig(
-    #     output_path / f"{STAGE_VERSION}_datasets_generalization_clustering.png",
+    #     output_path / f"{STAGE_VERSION}/datasets_generalization_clustering.png",
     #     dpi=300,
     #     bbox_inches="tight",
     # )
@@ -882,7 +888,7 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
         text_auto=".0%",  # type: ignore
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / f"{STAGE_VERSION}_datasets_bias.png", scale=3)
+    fig.write_image(output_path / f"{STAGE_VERSION}/datasets_bias.png", scale=3)
     plt.close()
 
     # %%
@@ -907,7 +913,7 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_datasets_bias_matrix.png", scale=3
+        output_path / f"{STAGE_VERSION}/datasets_bias_matrix.png", scale=3
     )
     plt.close()
 
@@ -949,7 +955,7 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
     )
     fig.update_traces(textposition="bottom center")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_datasets_bias_to_and_from.png", scale=3
+        output_path / f"{STAGE_VERSION}/datasets_bias_to_and_from.png", scale=3
     )
     plt.close()
 
@@ -987,7 +993,7 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
     #     rotation=90,
     # )
     # fig.savefig(
-    #     output_path / f"{STAGE_VERSION}_datasets_bias_clustering.png",
+    #     output_path / f"{STAGE_VERSION}/datasets_bias_clustering.png",
     #     dpi=300,
     #     bbox_inches="tight",
     # )
@@ -1044,7 +1050,7 @@ def plot_truthful_qa_generalization_meta_eval(
     fig.add_hline(y=0.359, line_dash="dot", line_color="green")
     fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_truthful_qa_generalization.png", scale=3
+        output_path / f"{STAGE_VERSION}/truthful_qa_generalization.png", scale=3
     )
     plt.close()
 
@@ -1106,7 +1112,7 @@ def plot_persona_meta_eval(
     fig.add_hline(y=0.359, line_dash="dot", line_color="green")
     fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_truthful_qa_bias.png", scale=3
+        output_path / f"{STAGE_VERSION}/truthful_qa_bias.png", scale=3
     )
     plt.close()
 
@@ -1168,7 +1174,7 @@ def plot_truthful_qa_meta_eval(
     fig.add_hline(y=0.359, line_dash="dot", line_color="green")
     fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}_truthful_qa_bias.png", scale=3
+        output_path / f"{STAGE_VERSION}/truthful_qa_bias.png", scale=3
     )
     plt.close()
 
@@ -1220,7 +1226,7 @@ def sanity_check_results(
             width=800,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}_sanity_check_arc_easy.png", scale=3
+            output_path / f"{STAGE_VERSION}/sanity_check_arc_easy.png", scale=3
         )
         plt.close()
 
@@ -1259,7 +1265,7 @@ def sanity_check_results(
             height=600,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}_sanity_check_got.png", scale=3
+            output_path / f"{STAGE_VERSION}/sanity_check_got.png", scale=3
         )
         plt.close()
 
@@ -1313,7 +1319,7 @@ def sanity_check_results(
         fig.add_hline(y=0.803, line_dash="dot", line_color="green")
         fig.add_hline(y=0.532, line_dash="dot", line_color="orange")
         fig.write_image(
-            output_path / f"{STAGE_VERSION}_sanity_check_repe.png", scale=3
+            output_path / f"{STAGE_VERSION}/sanity_check_repe.png", scale=3
         )
         plt.close()
 
@@ -1338,7 +1344,7 @@ def sanity_check_results(
             width=800,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}_sanity_check_lda.png", scale=3
+            output_path / f"{STAGE_VERSION}/sanity_check_lda.png", scale=3
         )
         plt.close()
 
