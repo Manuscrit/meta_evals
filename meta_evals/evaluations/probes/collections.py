@@ -1,9 +1,11 @@
+import logging
+import traceback
 from typing import Literal
 
 from meta_evals.activations.probe_preparations import EvalInputArrays
 from meta_evals.evaluations.predict_from_next_token import (
     NextTokenEvaluation,
-    BaseEval,
+    PreviousTokenEvaluation,
 )
 from meta_evals.evaluations.probes.base import BaseProbe
 from meta_evals.evaluations.probes.contrast_consistent_search import (
@@ -30,7 +32,11 @@ from meta_evals.evaluations.probes.random import (
     train_random_probe,
     AlwaysIdxProbe,
 )
-from meta_evals.utils.constants import WORK_WITH_BEHAVIORAL_PROBES, DEBUG
+from meta_evals.utils.constants import (
+    WORK_WITH_BEHAVIORAL_PROBES,
+    DEBUG,
+    WORK_WITH_PREVIOUS_TOK_ALGO,
+)
 
 BEHAVIORAL_PREFIX = "behavioral-"
 
@@ -47,6 +53,7 @@ ProbeAlgo = [
 ]
 OtherAlgo = [
     "next_tok_prediction",
+    "previous_tok_prediction",
     "rand_0",
     "rand_1",
 ]
@@ -104,6 +111,9 @@ def get_evals_to_work_with():
             BEHAVIORAL_PREFIX + "rand_0",
             BEHAVIORAL_PREFIX + "rand_1",
         ]
+    elif WORK_WITH_PREVIOUS_TOK_ALGO:
+        evals += ["previous_tok_prediction", "rand"]
+
     else:
         evals += ["rand"]
     return evals
@@ -111,7 +121,7 @@ def get_evals_to_work_with():
 
 def train_evaluation(
     eval_method, arrays: EvalInputArrays
-) -> BaseProbe | BaseEval | None:
+) -> BaseProbe | NextTokenEvaluation | PreviousTokenEvaluation | None:
     if eval_method.startswith(BEHAVIORAL_PREFIX):
         eval_method = eval_method[len(BEHAVIORAL_PREFIX) :]
 
@@ -119,6 +129,8 @@ def train_evaluation(
         return train_probe(eval_method, arrays)
     elif eval_method == "next_tok_prediction":
         return NextTokenEvaluation()
+    elif eval_method == "previous_tok_prediction":
+        return PreviousTokenEvaluation()
     elif eval_method == "rand_0":
         return AlwaysIdxProbe(0)
     elif eval_method == "rand_1":
@@ -131,63 +143,70 @@ def train_probe(
     eval_method: EvalMethod, arrays: EvalInputArrays
 ) -> BaseProbe | None:
 
-    if eval_method == "ccs":
-        if arrays.groups is None:
-            return None
-        return train_ccs_probe(
-            CcsTrainingConfig(),
-            activations=arrays.activations,
-            groups=arrays.groups,
-            answer_types=arrays.answer_types,
-            # N.B.: Technically unsupervised!
-            labels=arrays.labels,
-        )
-    elif eval_method == "lat":
-        return train_lat_probe(
-            activations=arrays.activations,
-            answer_types=arrays.answer_types,
-        )
-    elif eval_method == "dim":
-        return train_dim_probe(
-            activations=arrays.activations,
-            labels=arrays.labels,
-        )
-    elif eval_method == "lda":
-        return train_lda_probe(
-            activations=arrays.activations,
-            labels=arrays.labels,
-        )
-    elif eval_method == "lr":
-        return train_lr_probe(
-            LrConfig(),
-            activations=arrays.activations,
-            labels=arrays.labels,
-        )
-    elif eval_method == "lr-g":
-        if arrays.groups is None:
-            return None
-        return train_grouped_lr_probe(
-            LrConfig(),
-            activations=arrays.activations,
-            groups=arrays.groups,
-            labels=arrays.labels,
-        )
-    elif eval_method == "pca":
-        return train_pca_probe(
-            activations=arrays.activations,
-            answer_types=arrays.answer_types,
-        )
-    elif eval_method == "pca-g":
-        if arrays.groups is None:
-            return None
-        return train_grouped_pca_probe(
-            activations=arrays.activations,
-            groups=arrays.groups,
-            answer_types=arrays.answer_types,
-        )
-    elif eval_method == "rand":
+    try:
+        if eval_method == "ccs":
+            if arrays.groups is None:
+                return None
+            return train_ccs_probe(
+                CcsTrainingConfig(),
+                activations=arrays.activations,
+                groups=arrays.groups,
+                answer_types=arrays.answer_types,
+                # N.B.: Technically unsupervised!
+                labels=arrays.labels,
+            )
+        elif eval_method == "lat":
+            return train_lat_probe(
+                activations=arrays.activations,
+                answer_types=arrays.answer_types,
+            )
+        elif eval_method == "dim":
+            return train_dim_probe(
+                activations=arrays.activations,
+                labels=arrays.labels,
+            )
+        elif eval_method == "lda":
+            return train_lda_probe(
+                activations=arrays.activations,
+                labels=arrays.labels,
+            )
+        elif eval_method == "lr":
+            return train_lr_probe(
+                LrConfig(),
+                activations=arrays.activations,
+                labels=arrays.labels,
+            )
+        elif eval_method == "lr-g":
+            if arrays.groups is None:
+                return None
+            return train_grouped_lr_probe(
+                LrConfig(),
+                activations=arrays.activations,
+                groups=arrays.groups,
+                labels=arrays.labels,
+            )
+        elif eval_method == "pca":
+            return train_pca_probe(
+                activations=arrays.activations,
+                answer_types=arrays.answer_types,
+            )
+        elif eval_method == "pca-g":
+            if arrays.groups is None:
+                return None
+            return train_grouped_pca_probe(
+                activations=arrays.activations,
+                groups=arrays.groups,
+                answer_types=arrays.answer_types,
+            )
+        elif eval_method == "rand":
+            return train_random_probe(
+                activations=arrays.activations,
+            )
+        else:
+            raise ValueError(f"Unknown probe_method: {eval_method}")
+    except ValueError as e:
+        traceback.print_exc()
+        logging.error(f"Error: {e}")
         return train_random_probe(
             activations=arrays.activations,
         )
-    else:
-        raise ValueError(f"Unknown probe_method: {eval_method}")

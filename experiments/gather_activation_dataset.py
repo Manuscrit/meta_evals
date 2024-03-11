@@ -1,18 +1,11 @@
 from datetime import datetime
 
-import torch
-
 from meta_evals.datasets.activations.creation import create_activations_dataset
-from meta_evals.datasets.elk.utils.collections import (
-    DatasetCollectionId,
-    resolve_dataset_ids,
-)
 from meta_evals.datasets.elk.utils.limits import Limits, SplitLimits
 from meta_evals.utils.constants import (
     DEBUG,
     MODEL_FOR_DEBUGGING,
     MODEL_FOR_REAL,
-    get_ds_collection_ids,
     FASTER_RUN,
     DEBUG_VERSION,
     get_number_sample_debugging,
@@ -20,7 +13,6 @@ from meta_evals.utils.constants import (
     layer_skip,
 )
 from meta_evals.utils.utils import (
-    check_for_mps,
     get_torch_device,
     get_dataset_ids,
 )

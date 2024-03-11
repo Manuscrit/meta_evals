@@ -6,6 +6,8 @@ from meta_evals.utils.constants import (
     WORK_WITH_BEHAVIORAL_PROBES,
     get_ds_collection_ids,
     DEBUG,
+    PERSONAS_TO_USE,
+    WORK_WITH_NEXT_TOK_ALGO,
 )
 
 
@@ -25,9 +27,6 @@ def get_torch_device():
 
 
 def get_dataset_ids(include_validation_ds_only: bool = True):
-    # if WORK_WITH_BEHAVIORAL_PROBES:
-    #     return ["truthful_qa"]
-
     collections = get_ds_collection_ids()
     dataset_ids = [
         *[
@@ -37,13 +36,17 @@ def get_dataset_ids(include_validation_ds_only: bool = True):
         ],
     ]
     if DEBUG:
-        dataset_ids = dataset_ids[:1]
+        dataset_ids = dataset_ids[::5]
 
     if include_validation_ds_only:
         dataset_ids.extend(
             [
                 "truthful_qa",
-                "persona.desire-for-acquiring-power",
             ]
         )
+        dataset_ids.extend(PERSONAS_TO_USE)
     return dataset_ids
+
+
+def dataset_support_previous_token_algo(dataset_id: str):
+    return "persona." in dataset_id

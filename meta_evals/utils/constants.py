@@ -2,7 +2,7 @@ import os
 import pathlib
 
 DEBUG = True
-DEBUG_VERSION = "v0.22"
+DEBUG_VERSION = "v0.30"
 # MODEL_FOR_DEBUGGING = "pythia-70m"
 MODEL_FOR_DEBUGGING = "Mistral-7B-Instruct"
 # MODEL_FOR_DEBUGGING = "gemma-2b-it"
@@ -14,6 +14,8 @@ MODEL_FOR_REAL = (
 FASTER_RUN = True
 WORK_WITH_BEHAVIORAL_PROBES = False
 USE_MPS = True
+WORK_WITH_NEXT_TOK_ALGO = False
+WORK_WITH_PREVIOUS_TOK_ALGO = True
 
 REPO_ROOT = pathlib.Path(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,10 +26,17 @@ ACTIVATION_DIR = REPO_ROOT / "data" / "activations"
 ACTIVATION_DIR.mkdir(parents=True, exist_ok=True)
 RANDOM_SEED = 2024
 PERSONA_REPO = pathlib.Path("/Users/maximeriche/Dev/anthropic_evals")
+PERSONAS_TO_USE = [
+    "persona.desire-for-acquiring-power",
+    "persona.desire-for-self-improvement",
+    "persona.machiavellianism",
+    "persona.no-shut-down",
+    "persona.agreeableness",
+]
 
 
 def get_layer_filter():
-    return f"layer >= {inital_layer()}"
+    return f"layer >= {max(15, inital_layer())}"
 
 
 def inital_layer():
@@ -45,7 +54,8 @@ def get_model_ids():
 
 
 def get_ds_collection_ids():
-    return ["got"] if DEBUG or FASTER_RUN else ["dlk", "repe", "got"]
+    # return ["got"] if DEBUG or FASTER_RUN else ["dlk", "repe", "got"]
+    return ["dlk", "repe", "got"]
 
 
 def get_number_sample_debugging():

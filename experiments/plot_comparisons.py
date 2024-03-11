@@ -1,4 +1,5 @@
 import logging
+import traceback
 from pathlib import Path
 from typing import Any, Sequence, cast
 
@@ -11,6 +12,7 @@ import scipy.spatial.distance
 from dotenv import load_dotenv
 from mppr import MContext
 from tqdm import tqdm
+import seaborn as sns
 
 from meta_evals.activations.probe_preparations import ActivationArrayDataset
 from meta_evals.datasets.elk.types import DatasetId, Split
@@ -23,7 +25,10 @@ from meta_evals.evals_utils.probes import (
     eval_probe_by_question,
     eval_probe_by_row,
 )
-from meta_evals.evaluations.predict_from_next_token import BaseEval
+from meta_evals.evaluations.predict_from_next_token import (
+    NextTokenEvaluation,
+    PreviousTokenEvaluation,
+)
 from meta_evals.models.llms import LlmId
 from meta_evals.models.points import get_points
 from meta_evals.evaluations.probes.base import BaseProbe
@@ -33,8 +38,8 @@ from meta_evals.evaluations.probes.collections import (
     EvalMethod,
     train_probe,
     ALL_BEHAVIORAL_PROBES,
-    get_evals_to_work_with,
     train_evaluation,
+    get_evals_to_work_with,
 )
 from meta_evals.utils.compare_strucs import (
     TrainSpec,
@@ -53,6 +58,7 @@ from meta_evals.utils.constants import (
     WORK_WITH_BEHAVIORAL_PROBES,
     DEBUG_VERSION,
     layer_skip,
+    PERSONAS_TO_USE,
 )
 from meta_evals.utils.utils import get_dataset_ids
 
@@ -75,9 +81,6 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
         output_path,
     ) = load_activation_dataset(activation_ds_paths)
 
-    output_dir = output_path / STAGE_VERSION
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     assert len(dataset_ids) > 0
 
     df = compute_metrics(
@@ -91,6 +94,9 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
     ds_order, algorithm_order = get_ds_and_algo_order(df)
     plot_cumulative_distribution_function(df, output_path, "recovered_accuracy")
     plot_cumulative_distribution_function(df, output_path, "accuracy")
+
+    df = df.query(get_layer_filter())
+
     compute_percent_above_80(df)
     examine_best_probe(df, ds_order, algorithm_order, output_path)
     plot_algo_generalization_meta_eval(df, output_path, algorithm_order)
@@ -108,15 +114,15 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
         df,
     )
 
-    # plot_persona_meta_eval(
-    #     dataset,
-    #     mcontext,
-    #     output_path,
-    #     points,
-    #     token_idxs,
-    #     dataset_ids,
-    #     df,
-    # )
+    plot_persona_meta_eval(
+        dataset,
+        mcontext,
+        output_path,
+        points,
+        token_idxs,
+        dataset_ids,
+        df,
+    )
     if not DEBUG:
         sanity_check_results(
             points, token_idxs, output_path, dataset, mcontext, df
@@ -125,11 +131,17 @@ def compute_and_plot_all_comparisons(activation_ds_paths):
 
 def load_activation_dataset(activation_ds_paths: list[str] = None):
     output_path = Path(PLOT_DIR / "comparison")
+
+    output_dir = output_path / ACTIVATION_STAGE_VERSION
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_subdir = output_dir / PLOT_STAGE_VERSION
+    output_subdir.mkdir(parents=True, exist_ok=True)
+
     mcontext = MContext(output_path)
     activation_results = None
     for ds_idx, path in enumerate(activation_ds_paths):
         activation_result = mcontext.download_cached(
-            f"{STAGE_VERSION}_activations_results_idx_{ds_idx}",
+            f"{ACTIVATION_STAGE_VERSION}/activations_results_idx_{ds_idx}",
             path=path,
             to="pickle",
         ).get()
@@ -180,7 +192,7 @@ def run_pipeline(
         }
     )
     probes = train_specs.map_cached(
-        f"{STAGE_VERSION}_probe_train",
+        f"{ACTIVATION_STAGE_VERSION}/{PLOT_STAGE_VERSION}/probe_train",
         lambda _, spec: train_evaluation(
             spec.probe_method,
             dataset.get(
@@ -210,7 +222,7 @@ def run_pipeline(
             }
         )
         .map_cached(
-            f"{STAGE_VERSION}_probe_evaluate",
+            f"{ACTIVATION_STAGE_VERSION}/{PLOT_STAGE_VERSION}/probe_evaluate",
             lambda _, spec: _evaluate_probe(dataset, spec, eval_splits),
             to=PipelineResultRow,
         )
@@ -223,14 +235,35 @@ def _evaluate_probe(
 ) -> PipelineResultRow:
     result_hparams = None
     result_validation = None
-    if "train-hparams" in splits:
-        result_hparams = _evaluate_probe_on_split(
-            dataset, spec.probe, spec.train_spec, spec.dataset, "train-hparams"
+    try:
+        if "train-hparams" in splits:
+            result_hparams = _evaluate_probe_on_split(
+                dataset,
+                spec.probe,
+                spec.train_spec,
+                spec.dataset,
+                "train-hparams",
+            )
+        if "validation" in splits:
+            result_validation = _evaluate_probe_on_split(
+                dataset, spec.probe, spec.train_spec, spec.dataset, "validation"
+            )
+    except Exception as e:
+        traceback.print_exc()
+        logging.error(f"Error evaluating {spec} on {splits}: {e}")
+        return PipelineResultRow(
+            llm_id=spec.train_spec.llm_id,
+            train_dataset=spec.train_spec.dataset.get_name(),
+            eval_dataset=spec.dataset.get_name(),
+            probe_method=spec.train_spec.probe_method,
+            point_name=spec.train_spec.point_name,
+            token_idx=spec.train_spec.token_idx,
+            accuracy=0,
+            accuracy_n=0,
+            accuracy_hparams=0,
+            accuracy_hparams_n=0,
         )
-    if "validation" in splits:
-        result_validation = _evaluate_probe_on_split(
-            dataset, spec.probe, spec.train_spec, spec.dataset, "validation"
-        )
+
     assert "train" not in splits, splits
     return PipelineResultRow(
         llm_id=spec.train_spec.llm_id,
@@ -248,11 +281,15 @@ def _evaluate_probe(
 
 def _evaluate_probe_on_split(
     dataset: ActivationArrayDataset,
-    evaluation: BaseProbe | BaseEval,
+    evaluation: BaseProbe | NextTokenEvaluation | PreviousTokenEvaluation,
     train_spec: TrainSpec,
     eval_dataset: DatasetFilter,
     split: Split,
 ) -> EvalResult:
+    if isinstance(evaluation, PreviousTokenEvaluation):
+        if "persona." not in eval_dataset.dataset_id:
+            return EvalResult(accuracy=0, n=0)
+
     arrays = dataset.get(
         llm_id=train_spec.llm_id,
         dataset_filter=eval_dataset,
@@ -262,11 +299,17 @@ def _evaluate_probe_on_split(
         limit=None,
     )
     if arrays.groups is not None:
+        allow_flipping = check_dataset_allow_flipping(eval_dataset.dataset_id)
         question_result = eval_probe_by_question(
             evaluation,
             activations=arrays.activations,
             labels=arrays.labels,
             groups=arrays.groups,
+            allow_flipping=allow_flipping,
+            dataset_id=eval_dataset.dataset_id,
+            llm_id=train_spec.llm_id,
+            prompt_tokens=arrays.prompt_tokens,
+            prompt_logprobs_seq=arrays.prompt_logprobs_seq,
         )
         return EvalResult(
             accuracy=question_result.accuracy, n=question_result.n
@@ -276,6 +319,13 @@ def _evaluate_probe_on_split(
             evaluation, activations=arrays.activations, labels=arrays.labels
         )
         return EvalResult(accuracy=row_result.accuracy, n=row_result.n)
+
+
+def check_dataset_allow_flipping(dataset_id: DatasetId) -> bool:
+    allow_flipping = not (dataset_id in PERSONAS_TO_USE)
+    if not allow_flipping:
+        logging.info(f"Disabling flipping for {dataset_id}")
+    return allow_flipping
 
 
 def to_dataframe(results: Sequence[PipelineResultRow]) -> pd.DataFrame:
@@ -348,6 +398,7 @@ def compute_metrics(
 
     # %%
     df = to_dataframe(results)
+    df = df.query("accuracy_n > 0")
     thresholds_idx = (
         df.query("train == eval").groupby("eval")["accuracy_hparams"].idxmax()
     )
@@ -474,12 +525,34 @@ def plot_cumulative_distribution_function(
         width=800,
         height=400,
         color_discrete_sequence=px.colors.sequential.deep,
+        title=f"Cumulative distribution of probes: {x}, layer separated",
     )
     fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/r0_{x}_by_layer.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/per_layer_{x}.png", scale=3
     )
     plt.close()
+
+    for algo in df["algorithm"].unique():
+        fig = px.ecdf(
+            df.query(f"algorithm == '{algo}'")
+            .groupby(["train", "layer", "supervised", "algorithm"])[x]
+            .mean()
+            .reset_index(),
+            x=x,
+            # color="layer",
+            width=800,
+            height=400,
+            # color_discrete_sequence=px.colors.sequential.deep,
+            title=f"Cumulative distribution of probes: {x}, all layers merged",
+        )
+        fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
+        fig.write_image(
+            output_path
+            / f"{ACTIVATION_STAGE_VERSION}/per_layer_{x}_{algo}.png",
+            scale=3,
+        )
+        plt.close()
 
 
 def compute_percent_above_80(df: pd.DataFrame):
@@ -538,10 +611,12 @@ def examine_probe(
         text_auto=".0%",  # type: ignore
         width=800,
         height=500,
+        title=f"Recovery accuracy of probes trained on {train} at layer {layer}",
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/r1a_by_algorithms.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/examining_probe.png",
+        scale=3,
     )
     plt.close()
 
@@ -568,7 +643,9 @@ def examine_probe(
         height=800,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / f"{STAGE_VERSION}/r1b_by_train.png", scale=3)
+    fig.write_image(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/r1b_by_train.png", scale=3
+    )
     plt.close()
 
     df_best_layer = (
@@ -594,7 +671,9 @@ def examine_probe(
         height=600,
     )
     fig.update_layout(coloraxis_showscale=False)
-    fig.write_image(output_path / f"{STAGE_VERSION}/r1c_by_layer.png", scale=3)
+    fig.write_image(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/r1c_by_layer.png", scale=3
+    )
     plt.close()
 
 
@@ -613,10 +692,12 @@ def plot_algo_generalization_meta_eval(df, output_path, algorithm_order):
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
+        title="Generalization performance of probes (recovered_accuracy)",
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/algo_generalization.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/algo_generalization.png",
+        scale=3,
     )
     plt.close()
 
@@ -638,9 +719,12 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
+        title="Comparing the 'accuracy' of probes<br>averaged for each algorithm",
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / f"{STAGE_VERSION}/algo_bias_all.png", scale=3)
+    fig.write_image(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/algo_bias_all.png", scale=3
+    )
     plt.close()
 
     id_vars = ["algorithm", "supervised", "grouped"]
@@ -658,10 +742,11 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
+        title="Comparing the 'accuracy' of probes (on train)<br>averaged for each algorithm",
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/algo_bias_train.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/algo_bias_train.png", scale=3
     )
     plt.close()
 
@@ -680,16 +765,18 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
+        title="Comparing the 'accuracy' of probes (on test)<br>averaged for each algorithm",
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/algo_bias_test.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/algo_bias_test.png", scale=3
     )
     plt.close()
 
     df_train = df.copy()
     df_train = (
         df_train.query(get_layer_filter())
+        .query("train == eval")
         .groupby(["train", "algorithm"])["accuracy"]  # type: ignore
         .mean()
         .reset_index()
@@ -702,19 +789,44 @@ def plot_algo_bias_meta_eval(df, output_path, algorithm_order, ds_order):
         color_continuous_scale=COLORS,
         width=800,
         height=800,
+        title="Comparing the 'accuracy' of probes (eval on train)<br>averaged for each algorithm and train dataset",
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/algo_generalization_matrix_acc.png",
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/algo_generalization_matrix_acc_train.png",
+        scale=3,
+    )
+    plt.close()
+
+    df_train = df.copy()
+    df_train = (
+        df_train.query(get_layer_filter())
+        .query("train != eval")
+        .groupby(["train", "algorithm"])["accuracy"]  # type: ignore
+        .mean()
+        .reset_index()
+    )
+    fig = px.imshow(
+        df_train.pivot(index="train", columns="algorithm", values="accuracy")
+        .reindex(ds_order, axis=0)
+        .reindex(algorithm_order, axis=1),
+        text_auto=".0%",  # type: ignore
+        color_continuous_scale=COLORS,
+        width=800,
+        height=800,
+        title="Comparing the 'accuracy' of probes (eval on test)<br>averaged for each algorithm and train dataset",
+    )
+    fig.update_layout(coloraxis_showscale=False)
+    fig.write_image(
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/algo_generalization_matrix_acc_test.png",
         scale=3,
     )
     plt.close()
 
 
 def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
-    """
-    2. Examining dataset performance
-    """
     id_vars = ["train", "train_group"]
     fig = px.bar(
         df.copy().groupby(id_vars)["recovered_accuracy"].mean().reset_index(),
@@ -725,10 +837,12 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
         width=800,
         height=400,
         text_auto=".0%",  # type: ignore
+        title="Generalization performance of probes (recovered_accuracy)<br>averaged for train dataset",
     )
     fig.update_layout(yaxis_tickformat=".0%")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/datasets_generalization.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/datasets_generalization.png",
+        scale=3,
     )
     plt.close()
 
@@ -753,10 +867,12 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
         color_continuous_scale=COLORS,
         width=800,
         height=800,
+        title="Generalization performance of probes (recovered_accuracy)<br>averaged for train and eval dataset",
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/datasets_generalization_matrix.png",
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/datasets_generalization_matrix.png",
         scale=3,
     )
     plt.close()
@@ -776,10 +892,12 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
         color_continuous_scale=COLORS,
         width=800,
         height=800,
+        title="Generalization performance of probes (accuracy)<br>averaged for train and eval dataset",
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/datasets_generalization_matrix_acc.png",
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/datasets_generalization_matrix_acc.png",
         scale=3,
     )
     plt.close()
@@ -825,7 +943,7 @@ def plot_dataset_generalization_meta_eval(df, output_path, ds_order):
     fig.update_traces(textposition="bottom center")
     fig.write_image(
         output_path
-        / f"{STAGE_VERSION}/datasets_generalization_to_and_from.png",
+        / f"{ACTIVATION_STAGE_VERSION}/datasets_generalization_to_and_from.png",
         scale=3,
     )
     plt.close()
@@ -888,7 +1006,9 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
         text_auto=".0%",  # type: ignore
     )
     fig.update_layout(yaxis_tickformat=".0%")
-    fig.write_image(output_path / f"{STAGE_VERSION}/datasets_bias.png", scale=3)
+    fig.write_image(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/datasets_bias.png", scale=3
+    )
     plt.close()
 
     # %%
@@ -913,7 +1033,8 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
     )
     fig.update_layout(coloraxis_showscale=False)
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/datasets_bias_matrix.png", scale=3
+        output_path / f"{ACTIVATION_STAGE_VERSION}/datasets_bias_matrix.png",
+        scale=3,
     )
     plt.close()
 
@@ -955,7 +1076,9 @@ def plot_dataset_bias_meta_eval(df, output_path, ds_order):
     )
     fig.update_traces(textposition="bottom center")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/datasets_bias_to_and_from.png", scale=3
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/datasets_bias_to_and_from.png",
+        scale=3,
     )
     plt.close()
 
@@ -1050,7 +1173,9 @@ def plot_truthful_qa_generalization_meta_eval(
     fig.add_hline(y=0.359, line_dash="dot", line_color="green")
     fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
     fig.write_image(
-        output_path / f"{STAGE_VERSION}/truthful_qa_generalization.png", scale=3
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/truthful_qa_generalization.png",
+        scale=3,
     )
     plt.close()
 
@@ -1063,68 +1188,6 @@ def plot_truthful_qa_generalization_meta_eval(
     )
 
 
-def plot_persona_meta_eval(
-    dataset,
-    mcontext,
-    output_path,
-    points,
-    token_idxs,
-    datasets,
-    df,
-):
-    """
-    4. TruthfulQA
-    """
-    results_truthful_qa = run_pipeline(
-        dataset=dataset,
-        mcontext=mcontext,
-        points=points,
-        token_idxs=token_idxs,
-        llm_ids=LLM_IDS,
-        train_datasets=datasets,
-        eval_datasets=[DatasetIdFilter("truthful_qa")],
-        probe_methods=get_evals_to_work_with(),
-        eval_splits=["validation"],
-    )
-    truthful_qa = (
-        to_dataframe(results_truthful_qa)
-        .set_index(["train", "algorithm", "layer"])["accuracy"]
-        .rename("truthful_qa")  # type: ignore
-    )
-    df_truthful_qa = (
-        df.query("train != eval")
-        .groupby(["train", "algorithm", "layer"])["accuracy"]
-        .mean()
-        .reset_index()
-        .join(
-            truthful_qa,
-            on=["train", "algorithm", "layer"],
-        )
-    )
-    fig = px.scatter(
-        df_truthful_qa,
-        x="accuracy",
-        y="truthful_qa",
-        width=800,
-    )
-    fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
-    # https://arxiv.org/abs/2310.01405, table 1
-    fig.add_hline(y=0.359, line_dash="dot", line_color="green")
-    fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
-    fig.write_image(
-        output_path / f"{STAGE_VERSION}/truthful_qa_bias.png", scale=3
-    )
-    plt.close()
-
-    perc_measuring_truth = (
-        (df_truthful_qa["accuracy"] > 0.8)
-        & (df_truthful_qa["truthful_qa"] > 0.359)
-    ).sum() / (df_truthful_qa["accuracy"] > 0.8).sum()
-    print(
-        f"Percent of probes with >80% accuracy after filtering: {perc_measuring_truth:.1%}"
-    )
-
-
 def plot_truthful_qa_meta_eval(
     dataset,
     mcontext,
@@ -1134,9 +1197,6 @@ def plot_truthful_qa_meta_eval(
     datasets,
     df,
 ):
-    """
-    4. TruthfulQA
-    """
     results_truthful_qa = run_pipeline(
         dataset=dataset,
         mcontext=mcontext,
@@ -1151,10 +1211,12 @@ def plot_truthful_qa_meta_eval(
     truthful_qa = (
         to_dataframe(results_truthful_qa)
         .set_index(["train", "algorithm", "layer"])["accuracy"]
-        .rename("truthful_qa")  # type: ignore
+        .rename("truthful_qa_acc")  # type: ignore
     )
+
     df_truthful_qa = (
         df.query("train != eval")
+        .query(get_layer_filter())
         .groupby(["train", "algorithm", "layer"])["accuracy"]
         .mean()
         .reset_index()
@@ -1163,28 +1225,288 @@ def plot_truthful_qa_meta_eval(
             on=["train", "algorithm", "layer"],
         )
     )
-    fig = px.scatter(
-        df_truthful_qa,
-        x="accuracy",
-        y="truthful_qa",
-        width=800,
+    perc_measuring_truth = (
+        (df_truthful_qa["accuracy"] > 0.8)
+        & (df_truthful_qa["truthful_qa_acc"] > 0.359)
+    ).sum() / (df_truthful_qa["accuracy"] > 0.8).sum()
+    print(
+        f"Percent of probes with >80% accuracy (OOD) and >35.9% on TruthfulQA (baseline): {perc_measuring_truth:.1%}"
     )
-    fig.update_layout(xaxis_tickformat=".0%", yaxis_tickformat=".0%")
-    # https://arxiv.org/abs/2310.01405, table 1
-    fig.add_hline(y=0.359, line_dash="dot", line_color="green")
-    fig.add_hline(y=0.503, line_dash="dot", line_color="gray")
-    fig.write_image(
-        output_path / f"{STAGE_VERSION}/truthful_qa_bias.png", scale=3
+
+    # Plot the acc on TruthfulQA vs the acc on OOD datasets
+    plt.figure(figsize=(10, 10))
+    for algo in df["algorithm"].unique():
+        df_truthfulqa_one_algo = df_truthful_qa.query(f"algorithm == '{algo}'")
+        sns.regplot(
+            data=df_truthfulqa_one_algo,
+            x="accuracy",
+            y="truthful_qa_acc",
+            label=algo,
+        )
+    plt.axhline(y=0.359, linestyle="--", color="green")
+    plt.axhline(y=0.503, linestyle="--", color="gray")
+    plt.xlabel("OOD Accuracy")
+    plt.ylabel("TruthfulQA accuracy")
+    plt.title("TruthfulQA vs OOD")
+    plt.grid(True)
+    plt.legend()
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.savefig(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/truthful_qa_bias_vs_OOD.png",
     )
     plt.close()
 
-    perc_measuring_truth = (
-        (df_truthful_qa["accuracy"] > 0.8)
-        & (df_truthful_qa["truthful_qa"] > 0.359)
-    ).sum() / (df_truthful_qa["accuracy"] > 0.8).sum()
-    print(
-        f"Percent of probes with >80% accuracy after filtering: {perc_measuring_truth:.1%}"
+    # Plot the acc on TruthfulQA vs the acc on ID datasets
+    df_truthful_qa = (
+        df.query("train == eval")
+        .query(get_layer_filter())
+        .groupby(["train", "algorithm", "layer"])["accuracy"]
+        .mean()
+        .reset_index()
+        .join(
+            truthful_qa,
+            on=["train", "algorithm", "layer"],
+        )
     )
+    plt.figure(figsize=(10, 10))
+    for algo in df["algorithm"].unique():
+        df_truthfulqa_one_algo = df_truthful_qa.query(f"algorithm == '{algo}'")
+        sns.regplot(
+            data=df_truthfulqa_one_algo,
+            x="accuracy",
+            y="truthful_qa_acc",
+            label=algo,
+        )
+
+    plt.axhline(y=0.359, linestyle="--", color="green")
+    plt.axhline(y=0.503, linestyle="--", color="gray")
+    plt.xlabel("ID Accuracy")
+    plt.ylabel("TruthfulQA accuracy")
+    plt.title("TruthfulQA vs ID")
+    plt.grid(True)
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.savefig(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/truthful_qa_bias_vs_ID.png",
+    )
+    plt.close()
+    plt.close()
+
+
+def plot_persona_meta_eval(
+    dataset,
+    mcontext,
+    output_path,
+    points,
+    token_idxs,
+    datasets,
+    df,
+):
+    results_personas = run_pipeline(
+        dataset=dataset,
+        mcontext=mcontext,
+        points=points,
+        token_idxs=token_idxs,
+        llm_ids=LLM_IDS,
+        train_datasets=datasets,
+        eval_datasets=[DatasetIdFilter(persona) for persona in PERSONAS_TO_USE],
+        probe_methods=get_evals_to_work_with(),
+        eval_splits=["validation"],
+    )
+
+    persona_results = (
+        to_dataframe(results_personas)
+        .query(get_layer_filter())
+        .set_index(["train", "algorithm", "layer"])[["eval", "accuracy"]]
+        .rename(
+            columns={
+                "accuracy": "persona_agreement",
+                "eval": "persona_name",
+            }
+        )
+    )
+
+    # Plot the acc on Persona vs the acc on OOD datasets
+    df_persona = (
+        df.query("train != eval")
+        .query(get_layer_filter())
+        .groupby(["train", "algorithm", "layer"])["accuracy"]
+        .mean()
+        .reset_index()
+        .join(
+            persona_results,
+            on=["train", "algorithm", "layer"],
+        )
+    )
+    n_subplots = len(PERSONAS_TO_USE)
+    n_rows = np.sqrt(n_subplots).astype(int)
+    n_cols = np.ceil(n_subplots / n_rows).astype(int)
+    plt.subplots(n_rows, n_cols, figsize=(n_cols * 5, n_rows * 5))
+    for i, persona_name in enumerate(PERSONAS_TO_USE):
+        plt.subplot(n_rows, n_cols, i + 1)
+        df_one_persona = df_persona.query(f"persona_name == '{persona_name}'")
+        for algo in df_one_persona["algorithm"].unique():
+            df_one_persona_one_algo = df_one_persona.query(
+                f"algorithm == '{algo}'"
+            )
+            sns.regplot(
+                data=df_one_persona_one_algo,
+                x="accuracy",
+                y="persona_agreement",
+                label=algo,
+            )
+        plt.xlabel("Accuracy")
+        plt.ylabel("Persona agreement")
+        plt.title(persona_name)
+        plt.grid(True)
+        plt.legend()
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+
+    plt.tight_layout()
+    plt.savefig(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/persona_bias_vs_OOD.png"
+    )
+    plt.close()
+
+    # Plot the acc on Persona vs the acc on ID datasets
+    df_persona = (
+        df.query("train == eval")
+        .query(get_layer_filter())
+        .groupby(["train", "algorithm", "layer"])["accuracy"]
+        .mean()
+        .reset_index()
+        .join(
+            persona_results,
+            on=["train", "algorithm", "layer"],
+        )
+    )
+    n_subplots = len(PERSONAS_TO_USE)
+    n_rows = np.sqrt(n_subplots).astype(int)
+    n_cols = np.ceil(n_subplots / n_rows).astype(int)
+    plt.subplots(n_rows, n_cols, figsize=(n_cols * 5, n_rows * 5))
+    for i, persona_name in enumerate(PERSONAS_TO_USE):
+        plt.subplot(n_rows, n_cols, i + 1)
+        df_one_persona = df_persona.query(f"persona_name == '{persona_name}'")
+        for algo in df_one_persona["algorithm"].unique():
+            df_one_persona_one_algo = df_one_persona.query(
+                f"algorithm == '{algo}'"
+            )
+            sns.regplot(
+                data=df_one_persona_one_algo,
+                x="accuracy",
+                y="persona_agreement",
+                label=algo,
+            )
+        plt.xlabel("Accuracy")
+        plt.ylabel("Persona agreement")
+        plt.title(persona_name)
+        plt.grid(True)
+        plt.legend()
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+
+    plt.tight_layout()
+    plt.savefig(
+        output_path / f"{ACTIVATION_STAGE_VERSION}/persona_bias_vs_ID.png"
+    )
+    plt.close()
+
+    # Plot the acc on Persona vs the acc on previous tokens
+    # best_probe = (
+    #     df.groupby(
+    #         [
+    #             "llm_id",
+    #             "train",
+    #             # "eval",
+    #             "algorithm",
+    #             "layer",
+    #         ]
+    #     )
+    #     .mean("accuracy_hparams")
+    #     .reset_index()
+    #     .sort_values("accuracy_hparams", ascending=False)
+    #     .iloc[0]
+    # )
+    # df_persona = (
+    #     persona_results.join(
+    #         df_previous_tokens,
+    #         on=["train", "layer", "persona_name"],
+    #     )
+    #     .reset_index()
+    #     # .query(f"llm_id == '{best_probe['llm_id']}'")
+    #     .query(f"algorithm == '{best_probe['algorithm']}'")
+    #     .query(f"layer == {best_probe['layer']}")
+    #     .query(f"train == '{best_probe['train']}'")
+    # )
+    # assert len(df_persona) == len(PERSONAS_TO_USE)
+
+    best_probes = (
+        df.query("train != eval")
+        .groupby(
+            [
+                "llm_id",
+                "train",
+                "algorithm",
+                "layer",
+            ]
+        )
+        .mean("accuracy_hparams")
+        .reset_index()
+    )
+    best_probes_by_algorithm = best_probes.loc[
+        best_probes.groupby("algorithm")["accuracy_hparams"].idxmax()
+    ]
+    df_previous_tokens = (
+        to_dataframe(results_personas)
+        .query(get_layer_filter())
+        .query("algorithm == 'PREVIOUS_TOK_PREDICTION'")
+        .set_index(["train", "layer", "eval"])[["accuracy"]]
+        .rename(
+            columns={
+                "accuracy": "persona_agreement_next_tok",
+                "eval": "persona_name",
+            }
+        )
+    )
+
+    best_probes_by_algorithm_filtered = best_probes_by_algorithm[
+        ["algorithm", "layer", "train"]
+    ]
+    df_persona = persona_results.join(
+        df_previous_tokens,
+        on=["train", "layer", "persona_name"],
+    ).reset_index()
+    df_persona = df_persona.merge(
+        best_probes_by_algorithm_filtered,
+        on=["algorithm", "layer", "train"],
+        how="inner",
+    )
+
+    plt.figure(figsize=(10, 10))
+    for algo in df_persona["algorithm"].unique():
+        df_one_persona_one_algo = df_persona.query(f"algorithm == '{algo}'")
+        sns.regplot(
+            data=df_one_persona_one_algo,
+            x="persona_agreement_next_tok",
+            y="persona_agreement",
+            label=algo,
+        )
+    plt.xlabel("Persona agreement from tokens")
+    plt.ylabel("Persona agreement from the best probe of each algorithm")
+    plt.grid(True)
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig(
+        output_path
+        / f"{ACTIVATION_STAGE_VERSION}/persona_bias_vs_previous_token.png"
+    )
+    plt.close()
 
 
 def sanity_check_results(
@@ -1226,7 +1548,9 @@ def sanity_check_results(
             width=800,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}/sanity_check_arc_easy.png", scale=3
+            output_path
+            / f"{ACTIVATION_STAGE_VERSION}/sanity_check_arc_easy.png",
+            scale=3,
         )
         plt.close()
 
@@ -1265,7 +1589,8 @@ def sanity_check_results(
             height=600,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}/sanity_check_got.png", scale=3
+            output_path / f"{ACTIVATION_STAGE_VERSION}/sanity_check_got.png",
+            scale=3,
         )
         plt.close()
 
@@ -1319,7 +1644,8 @@ def sanity_check_results(
         fig.add_hline(y=0.803, line_dash="dot", line_color="green")
         fig.add_hline(y=0.532, line_dash="dot", line_color="orange")
         fig.write_image(
-            output_path / f"{STAGE_VERSION}/sanity_check_repe.png", scale=3
+            output_path / f"{ACTIVATION_STAGE_VERSION}/sanity_check_repe.png",
+            scale=3,
         )
         plt.close()
 
@@ -1344,7 +1670,8 @@ def sanity_check_results(
             width=800,
         )
         fig.write_image(
-            output_path / f"{STAGE_VERSION}/sanity_check_lda.png", scale=3
+            output_path / f"{ACTIVATION_STAGE_VERSION}/sanity_check_lda.png",
+            scale=3,
         )
         plt.close()
 
@@ -1361,15 +1688,18 @@ REPE_DATASETS = resolve_dataset_ids("repe")
 GOT_DATASETS = resolve_dataset_ids("got")
 COLORS = list(reversed(px.colors.sequential.YlOrRd))
 LLM_IDS = get_model_ids()
-COLLECTIONS = get_ds_collection_ids()
-STAGE_VERSION = DEBUG_VERSION if DEBUG else "v1.10"  # To reset caching...
+SUB_VERSION = ".5"  # To reset caching...
+ACTIVATION_STAGE_VERSION = DEBUG_VERSION if DEBUG else "v1.10"
+PLOT_STAGE_VERSION = ACTIVATION_STAGE_VERSION + SUB_VERSION
 DATASETS_TO_EVAL = get_dataset_ids(include_validation_ds_only=False)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     if DEBUG:
-        activation_ds_paths = [ACTIVATION_DIR / f"debug_{STAGE_VERSION}.pickle"]
+        activation_ds_paths = [
+            ACTIVATION_DIR / f"debug_{ACTIVATION_STAGE_VERSION}.pickle"
+        ]
     else:
         activation_ds_paths = [
             ACTIVATION_DIR

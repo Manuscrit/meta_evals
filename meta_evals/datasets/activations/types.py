@@ -14,6 +14,7 @@ class ActivationResultRow(BaseModel, extra="forbid"):
     activations: dict[str, NdArray]  # (s, d)
     prompt: str
     prompt_logprobs: float
+    prompt_logprobs_seq: NdArray
     label: bool | None
     split: Split
     llm_id: LlmId

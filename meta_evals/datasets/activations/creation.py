@@ -92,6 +92,7 @@ def create_activations_dataset(
                 label=input.label,
                 activations=activations.activations,
                 prompt_logprobs=activations.token_logprobs.sum().item(),
+                prompt_logprobs_seq=activations.token_logprobs,
                 next_token_logprobs=activations.next_token_logprobs,
                 group_id=input.group_id,
                 llm_id=input.llm_id,

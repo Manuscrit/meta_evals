@@ -69,13 +69,13 @@ def get_dataset(dataset_id: DatasetId) -> dict[str, Row]:
     else:
         dataset = elk_dataset
 
-    l = list(dataset.items())
-    rd_state = random.getstate()
-    random.seed(RANDOM_SEED)
-    random.shuffle(l)
-    random.setstate(rd_state)
-    shuffled_dataset = dict(l)
-    return shuffled_dataset
+    # l = list(dataset.items())
+    # rd_state = random.getstate()
+    # random.seed(RANDOM_SEED)
+    # random.shuffle(l)
+    # random.setstate(rd_state)
+    # shuffled_dataset = dict(l)
+    return dataset
 
 
 def get_datasets(dataset_ids: list[DatasetId]) -> dict[str, Row]:

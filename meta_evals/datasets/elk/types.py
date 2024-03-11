@@ -1,6 +1,10 @@
+from typing_extensions import Unpack
+
 from typing import Literal, get_args, List
 
 from pydantic import BaseModel
+
+from meta_evals.utils.constants import PERSONAS_TO_USE
 
 Split = Literal["train", "train-hparams", "validation"]
 
@@ -35,6 +39,10 @@ DatasetId = Literal[
     "common_sense_qa/simple",
     "persona",
     "persona.desire-for-acquiring-power",
+    "persona.desire-for-self-improvement",
+    "persona.machiavellianism",
+    "persona.no-shut-down",
+    "persona.agreeableness",
 ]
 
 

@@ -7,13 +7,13 @@ import pandas as pd
 from jaxtyping import Bool, Float, Int64
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
-from meta_evals.activations.inference import ModelT
 from meta_evals.datasets.activations.types import ActivationResultRow
 from meta_evals.datasets.elk.types import Split
 from meta_evals.datasets.elk.utils.filters import DatasetFilter
 from meta_evals.models.llms import get_llm_tokenizer
 from meta_evals.models.types import LlmId, Llm
 from meta_evals.utils.constants import WORK_WITH_BEHAVIORAL_PROBES
+from meta_evals.utils.utils import dataset_support_previous_token_algo
 
 
 @dataclass
@@ -24,6 +24,8 @@ class EvalInputArrays:
     answer_types: Int64[np.ndarray, "n"] | None  # noqa: F821
     behavioral_labels: Bool[np.ndarray, "n"] | None
     next_step_labels: Float[np.ndarray, "n"] | None
+    prompt_tokens: Int64[np.ndarray, "n s"] | None
+    prompt_logprobs_seq: Float[np.ndarray, "n s"] | None
 
 
 @dataclass
@@ -41,6 +43,7 @@ class ActivationArrayDataset:
         limit: int | None,
     ) -> EvalInputArrays:
         df_rows = []
+        encoder = get_llm_tokenizer(llm_id)
         for row in self.rows:
             if (
                 dataset_filter.filter(
@@ -50,6 +53,14 @@ class ActivationArrayDataset:
                 and row.split == split
                 and row.llm_id == llm_id
             ):
+
+                if dataset_support_previous_token_algo(row.dataset_id):
+                    prompt_tokens = encoder.encode(row.prompt)
+                    prompt_logprobs_seq = row.prompt_logprobs_seq.squeeze()
+                else:
+                    prompt_tokens = None
+                    prompt_logprobs_seq = None
+
                 row_dict = dict(
                     label=row.label,
                     group_id=row.group_id,
@@ -59,6 +70,8 @@ class ActivationArrayDataset:
                         if point_name != "logprobs"
                         else np.array(row.prompt_logprobs)
                     ),
+                    prompt_tokens=prompt_tokens,
+                    prompt_logprobs_seq=prompt_logprobs_seq,
                 )
                 if WORK_WITH_BEHAVIORAL_PROBES:
                     if len(row.answers_possible) != len(
@@ -89,8 +102,6 @@ class ActivationArrayDataset:
                     break
         df = pd.DataFrame(df_rows)
 
-        if df.empty:
-            n = 1
         assert not df.empty, (
             llm_id,
             dataset_filter,
@@ -127,6 +138,9 @@ class ActivationArrayDataset:
             behavioral_label = None
             next_step_labels = None
 
+        prompt_tokens = df["prompt_tokens"].to_numpy()
+        prompt_logprobs_seq = df["prompt_logprobs_seq"].to_numpy()
+
         return EvalInputArrays(
             activations=np.stack(df["activations"].tolist()).astype(np.float32),
             labels=labels,  # type: ignore
@@ -134,6 +148,8 @@ class ActivationArrayDataset:
             answer_types=answer_types,
             behavioral_labels=behavioral_label,
             next_step_labels=next_step_labels,
+            prompt_tokens=prompt_tokens,
+            prompt_logprobs_seq=prompt_logprobs_seq,
         )
 
 
